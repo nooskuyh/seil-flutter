@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../core/localization/seil_localizations.dart';
 import '../../shared/app_state.dart';
 import '../../shared/models.dart';
 import 'ssh_session_service.dart';
@@ -178,13 +179,13 @@ class _WorkspaceCommandBar extends StatelessWidget {
                   const SizedBox(width: 4),
                   _ToolbarButton(
                     icon: LucideIcons.refreshCw,
-                    tooltip: '세션 새로고침',
+                    tooltip: context.l10n.refreshSession,
                     onPressed:
                         state.busy ? null : () => _refreshActiveWorkspace(),
                   ),
                   _ToolbarButton(
                     icon: LucideIcons.x,
-                    tooltip: '현재 연결 종료',
+                    tooltip: context.l10n.disconnectCurrentConnection,
                     onPressed: state.disconnect,
                   ),
                 ],
@@ -239,13 +240,13 @@ class _WorkspaceCommandBar extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '서버 / 세션 선택',
+                          context.l10n.serverSessionSelection,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       _ToolbarButton(
                         icon: LucideIcons.plus,
-                        tooltip: '저장된 서버로 새 세션 추가',
+                        tooltip: context.l10n.addSessionFromSavedServer,
                         onPressed: state.busy || connectingConnectionId != null
                             ? null
                             : () {
@@ -257,7 +258,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '연결된 서버',
+                    context.l10n.connectedServers,
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 4),
@@ -275,7 +276,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        '${session.username}@${session.hostName}:${session.connection.port} · 작업 ${_workspaceCountForClient(state.liveSessions, session)}개',
+                        '${session.username}@${session.hostName}:${session.connection.port} · ${context.l10n.workspaceCount(_workspaceCountForClient(state.liveSessions, session))}',
                       ),
                       trailing: state.activeSession?.client == session.client
                           ? const Icon(LucideIcons.check, size: 16)
@@ -286,23 +287,23 @@ class _WorkspaceCommandBar extends StatelessWidget {
                       },
                     ),
                   if (state.liveSessions.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Text('연결된 서버가 없습니다.'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Text(context.l10n.noConnectedServers),
                     ),
                   const Divider(height: 20),
                   Row(
                     children: [
                       Expanded(
                         child: Text(
-                          '저장된 서버',
+                          context.l10n.savedServers,
                           style: Theme.of(context).textTheme.labelLarge,
                         ),
                       ),
                       if (connectingConnectionId != null)
-                        const Text(
-                          '연결 중...',
-                          style: TextStyle(
+                        Text(
+                          context.l10n.connecting,
+                          style: const TextStyle(
                             color: _mutedForeground,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -371,9 +372,9 @@ class _WorkspaceCommandBar extends StatelessWidget {
                             },
                     ),
                   if (state.connections.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Text('저장된 서버가 없습니다.'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Text(context.l10n.noSavedServers),
                     ),
                 ],
               ),
@@ -426,7 +427,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '열린 세션',
+                    context.l10n.openSessions,
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 4),
@@ -454,16 +455,16 @@ class _WorkspaceCommandBar extends StatelessWidget {
                       },
                     ),
                   if (sessions.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Text('열린 세션이 없습니다.'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Text(context.l10n.noOpenSessions),
                     ),
                   const Divider(height: 20),
                   ListTile(
                     enabled: !state.busy && source != null,
                     leading: const Icon(LucideIcons.plus, size: 18),
-                    title: const Text('새 tmux 세션 추가'),
-                    subtitle: const Text('이 서버에 새 작업 세션을 만듭니다.'),
+                    title: Text(context.l10n.addNewTmuxSession),
+                    subtitle: Text(context.l10n.addNewTmuxSessionDescription),
                     onTap: source == null
                         ? null
                         : () async {
@@ -479,8 +480,8 @@ class _WorkspaceCommandBar extends StatelessWidget {
                   ListTile(
                     enabled: source?.tmuxAvailable == true,
                     leading: const Icon(LucideIcons.squareTerminal, size: 18),
-                    title: const Text('tmux 세션 선택'),
-                    subtitle: const Text('원격 서버의 기존 tmux 목록에서 선택합니다.'),
+                    title: Text(context.l10n.chooseTmuxSession),
+                    subtitle: Text(context.l10n.chooseTmuxSessionDescription),
                     onTap: source?.tmuxAvailable != true
                         ? null
                         : () async {
@@ -534,13 +535,13 @@ class _WorkspaceCommandBar extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'tmux 세션',
+                          context.l10n.tmuxSessions,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       _ToolbarButton(
                         icon: LucideIcons.refreshCw,
-                        tooltip: '다시 조회',
+                        tooltip: context.l10n.refresh,
                         onPressed: state.busy
                             ? null
                             : () async {
@@ -551,11 +552,11 @@ class _WorkspaceCommandBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   if (activeSession.tmuxSessions.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       child: Text(
-                        '기존 tmux 세션이 없거나 조회 중입니다.',
-                        style: TextStyle(
+                        context.l10n.noTmuxSessionsOrLoading,
+                        style: const TextStyle(
                           color: _mutedForeground,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -605,7 +606,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
                         children: [
                           IconButton(
                             visualDensity: VisualDensity.compact,
-                            tooltip: '태그 설정',
+                            tooltip: context.l10n.tagSettings,
                             icon: const Icon(LucideIcons.hash, size: 15),
                             onPressed: () => _showTmuxTagDialog(
                               context,
@@ -616,7 +617,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
                           ),
                           IconButton(
                             visualDensity: VisualDensity.compact,
-                            tooltip: '세션 종료',
+                            tooltip: context.l10n.endSession,
                             icon: const Icon(LucideIcons.trash2, size: 15),
                             style: IconButton.styleFrom(
                               minimumSize: const Size(44, 36),
@@ -641,7 +642,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
                   ListTile(
                     enabled: !state.busy,
                     leading: const Icon(LucideIcons.plus, size: 18),
-                    title: const Text('기본 경로에서 tmux 세션 시작'),
+                    title: Text(context.l10n.startTmuxDefaultPath),
                     onTap: state.busy
                         ? null
                         : () async {
@@ -684,14 +685,14 @@ class _WorkspaceCommandBar extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '연결 템플릿',
+                          context.l10n.connectionTemplates,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       if (connectingConnectionId != null)
-                        const Text(
-                          '연결 중...',
-                          style: TextStyle(
+                        Text(
+                          context.l10n.connecting,
+                          style: const TextStyle(
                             color: _mutedForeground,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -759,9 +760,9 @@ class _WorkspaceCommandBar extends StatelessWidget {
                             },
                     ),
                   if (state.connections.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text('저장된 연결 템플릿이 없습니다.'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(context.l10n.noSavedConnections),
                     ),
                 ],
               ),
@@ -803,22 +804,24 @@ class _WorkspaceCommandBar extends StatelessWidget {
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(authMode == AuthMode.password ? 'SSH 비밀번호' : 'Private Key'),
+        title: Text(authMode == AuthMode.password
+            ? context.l10n.sshPassword
+            : 'Private Key'),
         content: TextField(
           controller: controller,
           minLines: authMode == AuthMode.privateKey ? 6 : 1,
           maxLines: authMode == AuthMode.privateKey ? 10 : 1,
           obscureText: authMode == AuthMode.password,
-          decoration: const InputDecoration(labelText: 'Secret'),
+          decoration: InputDecoration(labelText: context.l10n.secret),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('연결'),
+            child: Text(context.l10n.connect),
           ),
         ],
       ),
@@ -1114,13 +1117,13 @@ class _PaneSwitch extends StatelessWidget {
           children: [
             _SwitchItem(
               icon: LucideIcons.terminal,
-              label: '터미널',
+              label: context.l10n.terminal,
               selected: selected == 0,
               onPressed: () => state.selectActivePane(0),
             ),
             _SwitchItem(
               icon: LucideIcons.folder,
-              label: '탐색기',
+              label: context.l10n.explorer,
               selected: selected == 1,
               onPressed: () => state.selectActivePane(1),
             ),
@@ -1299,7 +1302,9 @@ class _TmuxSessionChooserState extends State<_TmuxSessionChooser> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      tmuxSessions.isEmpty ? '기존 세션 없음' : '기존 tmux 세션',
+                      tmuxSessions.isEmpty
+                          ? context.l10n.noExistingSessions
+                          : context.l10n.existingTmuxSessions,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -1315,7 +1320,9 @@ class _TmuxSessionChooserState extends State<_TmuxSessionChooser> {
                     onPressed: state.busy || refreshing
                         ? null
                         : () => _refreshSilently(visible: true),
-                    child: Text(refreshing ? '조회 중' : '다시 조회'),
+                    child: Text(refreshing
+                        ? context.l10n.loading
+                        : context.l10n.refresh),
                   ),
                 ],
               ),
@@ -1347,8 +1354,8 @@ class _TmuxSessionChooserState extends State<_TmuxSessionChooser> {
                       Expanded(
                         child: Text(
                           refreshing
-                              ? 'tmux 세션을 조회하고 있습니다.'
-                              : '기존 tmux 세션이 없습니다. 새 세션을 시작할 수 있습니다.',
+                              ? context.l10n.queryingTmuxSessions
+                              : context.l10n.noExistingTmuxSessions,
                           style: const TextStyle(
                             color: _mutedForeground,
                             fontSize: 12,
@@ -1386,7 +1393,7 @@ class _TmuxSessionChooserState extends State<_TmuxSessionChooser> {
                 leading: const Icon(LucideIcons.plus, size: 16),
                 onPressed:
                     state.busy ? null : () => state.selectNewTmuxSession(),
-                child: const Text('기본 경로에서 tmux 세션 시작'),
+                child: Text(context.l10n.startTmuxDefaultPath),
               ),
             ],
           ),
@@ -1461,13 +1468,13 @@ class _TmuxSessionTile extends StatelessWidget {
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                tooltip: '태그 설정',
+                tooltip: context.l10n.tagSettings,
                 icon: const Icon(LucideIcons.hash, size: 15),
                 onPressed: onTagPressed,
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                tooltip: '세션 종료',
+                tooltip: context.l10n.endSession,
                 icon: const Icon(LucideIcons.trash2, size: 15),
                 style: IconButton.styleFrom(
                   minimumSize: const Size(44, 36),
@@ -1542,15 +1549,15 @@ Future<void> _showTmuxTagDialog(
       return StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: Text('$tmuxName 태그'),
+            title: Text(context.l10n.tmuxTagTitle(tmuxName)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: controller,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(LucideIcons.hash),
-                    labelText: '태그 이름',
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(LucideIcons.hash),
+                    labelText: context.l10n.tagName,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1594,7 +1601,7 @@ Future<void> _showTmuxTagDialog(
                   );
                   Navigator.pop(context);
                 },
-                child: const Text('제거'),
+                child: Text(context.l10n.remove),
               ),
               FilledButton(
                 onPressed: () {
@@ -1606,7 +1613,7 @@ Future<void> _showTmuxTagDialog(
                   );
                   Navigator.pop(context);
                 },
-                child: const Text('저장'),
+                child: Text(context.l10n.save),
               ),
             ],
           );
@@ -2229,16 +2236,16 @@ class _TerminalPaneState extends State<TerminalPane> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('tmux 세션 삭제'),
-        content: Text('$tmuxName tmux 세션을 삭제합니다.'),
+        title: Text(context.l10n.deleteTmuxSession),
+        content: Text(context.l10n.deleteTmuxSessionMessage(tmuxName)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('삭제'),
+            child: Text(context.l10n.delete),
           ),
         ],
       ),
@@ -2563,7 +2570,7 @@ class _TerminalHistoryMoreButton extends StatelessWidget {
           ),
           onPressed: onPressed,
           icon: const Icon(LucideIcons.chevronUp, size: 14),
-          label: const Text('이전 내용 더보기'),
+          label: Text(context.l10n.loadMoreHistory),
         ),
       ),
     );
@@ -2589,7 +2596,7 @@ class _TerminalZoomControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Tooltip(
-          message: '터미널 축소',
+          message: context.l10n.zoomOutTerminal,
           child: _CompactGlassButton(
             height: 26,
             padding: EdgeInsets.zero,
@@ -2599,7 +2606,7 @@ class _TerminalZoomControls extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         Tooltip(
-          message: '터미널 확대',
+          message: context.l10n.zoomInTerminal,
           child: _CompactGlassButton(
             height: 26,
             padding: EdgeInsets.zero,
@@ -2655,12 +2662,12 @@ class _TerminalSessionEndButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: '현재 tmux 세션 삭제',
+      message: context.l10n.deleteCurrentTmuxSession,
       child: _CompactGlassButton(
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         icon: LucideIcons.logOut,
-        label: '세션 종료',
+        label: context.l10n.endSession,
         onPressed: onPressed,
       ),
     );
@@ -2730,7 +2737,7 @@ class _KeyBarState extends State<_KeyBar> {
                   suffixIcon: IconButton(
                     icon: const Icon(LucideIcons.send, size: 15),
                     onPressed: () => unawaited(_submitText()),
-                    tooltip: '입력 전송',
+                    tooltip: context.l10n.sendInput,
                   ),
                 ),
                 onSubmitted: (_) => unawaited(_submitText()),
@@ -2902,7 +2909,7 @@ class _MacroKeyRow extends StatelessWidget {
             SizedBox(
               width: 38,
               child: Tooltip(
-                message: '키보드 매크로 설정',
+                message: context.l10n.keyboardMacroSettings,
                 child: _CompactGlassButton(
                   height: 30,
                   padding: EdgeInsets.zero,
@@ -2993,11 +3000,11 @@ class _KeyboardMacroSettingsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('키보드 매크로'),
+        title: Text(context.l10n.keyboardMacros),
         actions: [
           _ToolbarButton(
             icon: LucideIcons.save,
-            tooltip: '저장',
+            tooltip: context.l10n.save,
             onPressed: saving ? null : () => unawaited(_save()),
           ),
         ],
@@ -3015,10 +3022,10 @@ class _KeyboardMacroSettingsScreenState
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
                 labelText: 'F${index + 1}',
-                hintText: '비워두면 F${index + 1} 키를 보냅니다.',
+                hintText: context.l10n.keyboardMacroHint(index + 1),
                 prefixIcon: const Icon(LucideIcons.keyboard),
                 suffixIcon: IconButton(
-                  tooltip: '비우기',
+                  tooltip: context.l10n.clear,
                   icon: const Icon(LucideIcons.x, size: 16),
                   onPressed: () => controllers[index].clear(),
                 ),
@@ -3040,7 +3047,7 @@ class _KeyboardMacroSettingsScreenState
                   )
                 : const Icon(LucideIcons.save, size: 16),
             onPressed: saving ? null : () => unawaited(_save()),
-            label: const Text('저장'),
+            label: Text(context.l10n.save),
           ),
         ),
       ),
@@ -3707,7 +3714,7 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
   Widget build(BuildContext context) {
     final directory = widget.state.activeDirectory;
     if (directory == null) {
-      return const Center(child: Text('파일 정보를 불러오지 못했습니다.'));
+      return Center(child: Text(context.l10n.fileInfoUnavailable));
     }
 
     final entries = _filteredEntries(directory.entries);
@@ -3725,14 +3732,14 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                 children: [
                   _ExplorerIconButton(
                     icon: LucideIcons.chevronLeft,
-                    tooltip: '이전 폴더',
+                    tooltip: context.l10n.previousFolder,
                     onPressed: widget.state.canGoBackDirectory
                         ? widget.state.goBackDirectory
                         : null,
                   ),
                   _ExplorerIconButton(
                     icon: LucideIcons.chevronUp,
-                    tooltip: '상위 폴더',
+                    tooltip: context.l10n.parentFolder,
                     onPressed: directory.parentPath == null
                         ? null
                         : () => widget.state.loadDirectory(
@@ -3741,7 +3748,7 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                   ),
                   _ExplorerIconButton(
                     icon: LucideIcons.squareTerminal,
-                    tooltip: '현재 경로에서 터미널 세션 시작',
+                    tooltip: context.l10n.startTerminalHere,
                     onPressed: widget.state.busy
                         ? null
                         : () => widget.state.createTerminalSessionFromActive(
@@ -3752,18 +3759,18 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                   ),
                   _ExplorerIconButton(
                     icon: LucideIcons.upload,
-                    tooltip: '업로드',
+                    tooltip: context.l10n.upload,
                     busy: uploading,
                     onPressed: uploading ? null : () => _uploadFiles(context),
                   ),
                   _ExplorerIconButton(
                     icon: LucideIcons.folderPlus,
-                    tooltip: '새 폴더',
+                    tooltip: context.l10n.newFolder,
                     onPressed: () => _newFolder(context),
                   ),
                   _ExplorerIconButton(
                     icon: LucideIcons.refreshCw,
-                    tooltip: '새로고침',
+                    tooltip: context.l10n.refresh,
                     onPressed: widget.state.refreshActiveDirectory,
                   ),
                 ],
@@ -3791,7 +3798,7 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                             minWidth: 28,
                             minHeight: 28,
                           ),
-                          hintText: '검색',
+                          hintText: context.l10n.search,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 6,
@@ -3816,7 +3823,7 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                   ),
                   _ExplorerIconButton(
                     icon: showHidden ? LucideIcons.eye : LucideIcons.eyeOff,
-                    tooltip: '숨김 파일 표시',
+                    tooltip: context.l10n.showHiddenFiles,
                     selected: showHidden,
                     onPressed: () => setState(() => showHidden = !showHidden),
                   ),
@@ -3825,12 +3832,12 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  _ExplorerPill(label: '$dirCount dirs'),
+                  _ExplorerPill(label: context.l10n.dirsCount(dirCount)),
                   const SizedBox(width: 5),
-                  _ExplorerPill(label: '$fileCount files'),
+                  _ExplorerPill(label: context.l10n.filesCount(fileCount)),
                   const Spacer(),
                   Text(
-                    _sortModeLabel(sortMode),
+                    _sortModeLabel(context, sortMode),
                     style: const TextStyle(
                       color: _mutedForeground,
                       fontSize: 11,
@@ -3846,7 +3853,9 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
           child: entries.isEmpty
               ? Center(
                   child: Text(
-                    filter.trim().isEmpty ? '비어 있는 디렉토리' : '검색 결과 없음',
+                    filter.trim().isEmpty
+                        ? context.l10n.emptyDirectory
+                        : context.l10n.noSearchResults,
                     style: const TextStyle(
                       color: _mutedForeground,
                       fontSize: 12,
@@ -3924,8 +3933,8 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
       SnackBar(
         content: Text(
           skipped == 0
-              ? '$uploaded개 파일을 업로드했습니다.'
-              : '$uploaded개 업로드, $skipped개 건너뜀',
+              ? context.l10n.uploadedFiles(uploaded)
+              : context.l10n.uploadedAndSkippedFiles(uploaded, skipped),
         ),
       ),
     );
@@ -3969,7 +3978,11 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
   }
 
   Future<void> _newFolder(BuildContext context) async {
-    final name = await _askText(context, title: '새 폴더', label: '폴더 이름');
+    final name = await _askText(
+      context,
+      title: context.l10n.newFolder,
+      label: context.l10n.folderName,
+    );
     if (name != null && name.trim().isNotEmpty) {
       await widget.state.createFolder(name);
     }
@@ -3978,8 +3991,8 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
   Future<void> _rename(BuildContext context, RemoteFileEntry entry) async {
     final name = await _askText(
       context,
-      title: '이름 변경',
-      label: '새 이름',
+      title: context.l10n.rename,
+      label: context.l10n.newName,
       initialValue: entry.name,
     );
     if (name != null && name.trim().isNotEmpty) {
@@ -4022,11 +4035,11 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('확인'),
+            child: Text(context.l10n.ok),
           ),
         ],
       ),
@@ -4098,7 +4111,7 @@ Future<void> _showFullPath(BuildContext context, String path) {
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('현재 경로'),
+      title: Text(context.l10n.currentPath),
       content: SelectableText(path),
       actions: [
         TextButton(
@@ -4106,11 +4119,11 @@ Future<void> _showFullPath(BuildContext context, String path) {
             Clipboard.setData(ClipboardData(text: path));
             Navigator.pop(context);
           },
-          child: const Text('복사'),
+          child: Text(context.l10n.copy),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('확인'),
+          child: Text(context.l10n.ok),
         ),
       ],
     ),
@@ -4335,7 +4348,7 @@ class _ExplorerEntryTile extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       entry.isDirectory
-                          ? '폴더'
+                          ? context.l10n.folder
                           : '${entry.typeLabel} · ${_formatBytes(entry.size)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -4397,14 +4410,16 @@ class _SortMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
-      tooltip: '정렬',
+      tooltip: context.l10n.sort,
       initialValue: value,
       onSelected: onChanged,
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: 'name', child: Text('이름순')),
-        PopupMenuItem(value: 'type', child: Text('유형순')),
-        PopupMenuItem(value: 'modified', child: Text('수정일순')),
-        PopupMenuItem(value: 'created', child: Text('생성일순')),
+      itemBuilder: (context) => [
+        PopupMenuItem(value: 'name', child: Text(context.l10n.sortByName)),
+        PopupMenuItem(value: 'type', child: Text(context.l10n.sortByType)),
+        PopupMenuItem(
+            value: 'modified', child: Text(context.l10n.sortByModified)),
+        PopupMenuItem(
+            value: 'created', child: Text(context.l10n.sortByCreated)),
       ],
       child: Container(
         width: 30,
@@ -4420,12 +4435,12 @@ class _SortMenu extends StatelessWidget {
   }
 }
 
-String _sortModeLabel(String sortMode) {
+String _sortModeLabel(BuildContext context, String sortMode) {
   return switch (sortMode) {
-    'type' => '유형순',
-    'modified' => '수정일순',
-    'created' => '생성일순',
-    _ => '이름순',
+    'type' => context.l10n.sortByType,
+    'modified' => context.l10n.sortByModified,
+    'created' => context.l10n.sortByCreated,
+    _ => context.l10n.sortByName,
   };
 }
 
@@ -4578,7 +4593,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
     }
     if (widget.entry.previewKind == FilePreviewKind.download) {
       return const _LoadedPreview(
-        message: '이 파일 형식은 앱 내 미리보기를 지원하지 않습니다.',
+        unsupportedPreview: true,
       );
     }
     final file = await widget.session.readTextFile(widget.entry.path);
@@ -4615,7 +4630,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
                   editing ? LucideIcons.eye : LucideIcons.pencil,
                   size: 15,
                 ),
-                label: Text(editing ? '미리보기' : '편집'),
+                label: Text(editing ? context.l10n.preview : context.l10n.edit),
               ),
             ],
           ],
@@ -4624,7 +4639,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
           if (editing)
             _ToolbarButton(
               icon: LucideIcons.save,
-              tooltip: '저장',
+              tooltip: context.l10n.save,
               onPressed: saving ? null : () => unawaited(_save()),
             ),
         ],
@@ -4657,12 +4672,12 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
                 ),
               );
             }
-            if (preview.message != null) {
+            if (preview.unsupportedPreview) {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(18),
                   child: Text(
-                    preview.message!,
+                    context.l10n.filePreviewUnsupported,
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: _mutedForeground),
                   ),
@@ -4712,14 +4727,14 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
           saving = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('파일을 저장했습니다.')),
+          SnackBar(content: Text(context.l10n.fileSaved)),
         );
       }
     } catch (error) {
       if (mounted) {
         setState(() => saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('저장 실패: $error')),
+          SnackBar(content: Text(context.l10n.saveFailed(error))),
         );
       }
     }
@@ -4727,11 +4742,15 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
 }
 
 class _LoadedPreview {
-  const _LoadedPreview({this.textFile, this.imageBytes, this.message});
+  const _LoadedPreview({
+    this.textFile,
+    this.imageBytes,
+    this.unsupportedPreview = false,
+  });
 
   final RemoteTextFile? textFile;
   final Uint8List? imageBytes;
-  final String? message;
+  final bool unsupportedPreview;
 }
 
 class _CodeEditor extends StatelessWidget {
@@ -4757,7 +4776,9 @@ class _CodeEditor extends StatelessWidget {
       decoration: InputDecoration(
         border: InputBorder.none,
         contentPadding: const EdgeInsets.all(12),
-        hintText: language == null ? '내용 입력' : '${language!} 편집',
+        hintText: language == null
+            ? context.l10n.enterContent
+            : context.l10n.editLanguage(language!),
       ),
     );
   }
@@ -4913,11 +4934,11 @@ class FullTextScreen extends StatelessWidget {
         actions: [
           _ToolbarButton(
             icon: LucideIcons.copy,
-            tooltip: '전체 복사',
+            tooltip: context.l10n.copyAll,
             onPressed: () {
               Clipboard.setData(ClipboardData(text: text));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('전체 텍스트를 복사했습니다.')),
+                SnackBar(content: Text(context.l10n.copiedAllText)),
               );
             },
           ),
@@ -4932,7 +4953,7 @@ class FullTextScreen extends StatelessWidget {
               selectionHandleColor: _terminalSelectionHandle,
             ),
             child: SelectableText(
-              text.isEmpty ? '출력된 터미널 텍스트가 없습니다.' : text,
+              text.isEmpty ? context.l10n.noTerminalText : text,
               style: const TextStyle(
                 fontFamily: _terminalFontFamily,
                 fontFamilyFallback: [

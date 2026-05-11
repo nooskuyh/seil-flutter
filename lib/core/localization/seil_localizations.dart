@@ -425,6 +425,41 @@ class SeilLocalizations {
         zh: '新建连接',
       );
 
+  String get serverSessionSelection => _t(
+        en: 'Server / session selection',
+        ko: '서버 / 세션 선택',
+        ja: 'サーバー / セッション選択',
+        zh: '服务器 / 会话选择',
+      );
+
+  String get addSessionFromSavedServer => _t(
+        en: 'Add a new session from a saved server',
+        ko: '저장된 서버로 새 세션 추가',
+        ja: '保存済みサーバーから新規セッションを追加',
+        zh: '从已保存服务器添加新会话',
+      );
+
+  String get connectedServers => _t(
+        en: 'Connected servers',
+        ko: '연결된 서버',
+        ja: '接続中のサーバー',
+        zh: '已连接服务器',
+      );
+
+  String workspaceCount(int count) => _t(
+        en: '$count workspace${count == 1 ? '' : 's'}',
+        ko: '작업 $count개',
+        ja: 'ワークスペース $count 件',
+        zh: '$count 个工作区',
+      );
+
+  String get noConnectedServers => _t(
+        en: 'No connected servers.',
+        ko: '연결된 서버가 없습니다.',
+        ja: '接続中のサーバーはありません。',
+        zh: '没有已连接服务器。',
+      );
+
   String get activeSessions => _t(
         en: 'Active sessions',
         ko: '활성 세션',
@@ -458,6 +493,174 @@ class SeilLocalizations {
         ko: '저장된 연결 템플릿이 없습니다. 새 연결을 추가하면 여기에 표시됩니다.',
         ja: '保存済み接続テンプレートはありません。新規接続を追加するとここに表示されます。',
         zh: '没有已保存的连接模板。添加新连接后会显示在这里。',
+      );
+
+  String get noSavedServers => _t(
+        en: 'No saved servers.',
+        ko: '저장된 서버가 없습니다.',
+        ja: '保存済みサーバーはありません。',
+        zh: '没有已保存服务器。',
+      );
+
+  String get openSessions => _t(
+        en: 'Open sessions',
+        ko: '열린 세션',
+        ja: '開いているセッション',
+        zh: '打开的会话',
+      );
+
+  String get noOpenSessions => _t(
+        en: 'No open sessions.',
+        ko: '열린 세션이 없습니다.',
+        ja: '開いているセッションはありません。',
+        zh: '没有打开的会话。',
+      );
+
+  String get addNewTmuxSession => _t(
+        en: 'Add new tmux session',
+        ko: '새 tmux 세션 추가',
+        ja: '新規 tmux セッションを追加',
+        zh: '添加新的 tmux 会话',
+      );
+
+  String get addNewTmuxSessionDescription => _t(
+        en: 'Create a new work session on this server.',
+        ko: '이 서버에 새 작업 세션을 만듭니다.',
+        ja: 'このサーバーに新しい作業セッションを作成します。',
+        zh: '在此服务器上创建新的工作会话。',
+      );
+
+  String get chooseTmuxSession => _t(
+        en: 'Choose tmux session',
+        ko: 'tmux 세션 선택',
+        ja: 'tmux セッションを選択',
+        zh: '选择 tmux 会话',
+      );
+
+  String get chooseTmuxSessionDescription => _t(
+        en: 'Choose from existing tmux sessions on the remote server.',
+        ko: '원격 서버의 기존 tmux 목록에서 선택합니다.',
+        ja: 'リモートサーバー上の既存 tmux 一覧から選択します。',
+        zh: '从远程服务器现有 tmux 列表中选择。',
+      );
+
+  String get tmuxSessions => _t(
+        en: 'tmux sessions',
+        ko: 'tmux 세션',
+        ja: 'tmux セッション',
+        zh: 'tmux 会话',
+      );
+
+  String get noTmuxSessionsOrLoading => _t(
+        en: 'No existing tmux sessions, or still loading.',
+        ko: '기존 tmux 세션이 없거나 조회 중입니다.',
+        ja: '既存の tmux セッションがないか、読み込み中です。',
+        zh: '没有现有 tmux 会话，或正在加载。',
+      );
+
+  String get connectionTemplates => _t(
+        en: 'Connection templates',
+        ko: '연결 템플릿',
+        ja: '接続テンプレート',
+        zh: '连接模板',
+      );
+
+  String get noExistingSessions => _t(
+        en: 'No existing sessions',
+        ko: '기존 세션 없음',
+        ja: '既存セッションなし',
+        zh: '没有现有会话',
+      );
+
+  String get existingTmuxSessions => _t(
+        en: 'Existing tmux sessions',
+        ko: '기존 tmux 세션',
+        ja: '既存の tmux セッション',
+        zh: '现有 tmux 会话',
+      );
+
+  String get queryingTmuxSessions => _t(
+        en: 'Querying tmux sessions.',
+        ko: 'tmux 세션을 조회하고 있습니다.',
+        ja: 'tmux セッションを照会しています。',
+        zh: '正在查询 tmux 会话。',
+      );
+
+  String get noExistingTmuxSessions => _t(
+        en: 'No existing tmux sessions. You can start a new session.',
+        ko: '기존 tmux 세션이 없습니다. 새 세션을 시작할 수 있습니다.',
+        ja: '既存の tmux セッションはありません。新規セッションを開始できます。',
+        zh: '没有现有 tmux 会话。可以启动新会话。',
+      );
+
+  String get startTmuxDefaultPath => _t(
+        en: 'Start tmux session from the default path',
+        ko: '기본 경로에서 tmux 세션 시작',
+        ja: 'デフォルトパスから tmux セッションを開始',
+        zh: '从默认路径启动 tmux 会话',
+      );
+
+  String get tagSettings => _t(
+        en: 'Tag settings',
+        ko: '태그 설정',
+        ja: 'タグ設定',
+        zh: '标签设置',
+      );
+
+  String get endSession => _t(
+        en: 'End session',
+        ko: '세션 종료',
+        ja: 'セッションを終了',
+        zh: '结束会话',
+      );
+
+  String get deleteCurrentTmuxSession => _t(
+        en: 'Delete current tmux session',
+        ko: '현재 tmux 세션 삭제',
+        ja: '現在の tmux セッションを削除',
+        zh: '删除当前 tmux 会话',
+      );
+
+  String get deleteTmuxSession => _t(
+        en: 'Delete tmux session',
+        ko: 'tmux 세션 삭제',
+        ja: 'tmux セッションを削除',
+        zh: '删除 tmux 会话',
+      );
+
+  String deleteTmuxSessionMessage(String name) => _t(
+        en: 'Delete the $name tmux session?',
+        ko: '$name tmux 세션을 삭제합니다.',
+        ja: '$name tmux セッションを削除します。',
+        zh: '删除 $name tmux 会话？',
+      );
+
+  String tmuxTagTitle(String name) => _t(
+        en: '$name tag',
+        ko: '$name 태그',
+        ja: '$name タグ',
+        zh: '$name 标签',
+      );
+
+  String get tagName => _t(
+        en: 'Tag name',
+        ko: '태그 이름',
+        ja: 'タグ名',
+        zh: '标签名称',
+      );
+
+  String get refreshSession => _t(
+        en: 'Refresh session',
+        ko: '세션 새로고침',
+        ja: 'セッションを更新',
+        zh: '刷新会话',
+      );
+
+  String get disconnectCurrentConnection => _t(
+        en: 'Disconnect current connection',
+        ko: '현재 연결 종료',
+        ja: '現在の接続を終了',
+        zh: '断开当前连接',
       );
 
   String get deleteTemplate => _t(
@@ -507,6 +710,20 @@ class SeilLocalizations {
         ko: '연결 중...',
         ja: '接続中...',
         zh: '连接中...',
+      );
+
+  String get refresh => _t(
+        en: 'Refresh',
+        ko: '새로고침',
+        ja: '更新',
+        zh: '刷新',
+      );
+
+  String get loading => _t(
+        en: 'Loading',
+        ko: '조회 중',
+        ja: '読み込み中',
+        zh: '加载中',
       );
 
   String get secretRequired => _t(
@@ -577,6 +794,307 @@ class SeilLocalizations {
         ko: '탐색기',
         ja: 'エクスプローラー',
         zh: '文件浏览器',
+      );
+
+  String get loadMoreHistory => _t(
+        en: 'Load previous content',
+        ko: '이전 내용 더보기',
+        ja: '以前の内容をさらに表示',
+        zh: '加载之前的内容',
+      );
+
+  String get zoomOutTerminal => _t(
+        en: 'Zoom out terminal',
+        ko: '터미널 축소',
+        ja: 'ターミナルを縮小',
+        zh: '缩小终端',
+      );
+
+  String get zoomInTerminal => _t(
+        en: 'Zoom in terminal',
+        ko: '터미널 확대',
+        ja: 'ターミナルを拡大',
+        zh: '放大终端',
+      );
+
+  String get sendInput => _t(
+        en: 'Send input',
+        ko: '입력 전송',
+        ja: '入力を送信',
+        zh: '发送输入',
+      );
+
+  String get keyboardMacros => _t(
+        en: 'Keyboard macros',
+        ko: '키보드 매크로',
+        ja: 'キーボードマクロ',
+        zh: '键盘宏',
+      );
+
+  String get keyboardMacroSettings => _t(
+        en: 'Keyboard macro settings',
+        ko: '키보드 매크로 설정',
+        ja: 'キーボードマクロ設定',
+        zh: '键盘宏设置',
+      );
+
+  String keyboardMacroHint(int index) => _t(
+        en: 'Leave empty to send the F$index key.',
+        ko: '비워두면 F$index 키를 보냅니다.',
+        ja: '空にすると F$index キーを送信します。',
+        zh: '留空则发送 F$index 键。',
+      );
+
+  String get clear => _t(
+        en: 'Clear',
+        ko: '비우기',
+        ja: 'クリア',
+        zh: '清空',
+      );
+
+  String get fileInfoUnavailable => _t(
+        en: 'Could not load file information.',
+        ko: '파일 정보를 불러오지 못했습니다.',
+        ja: 'ファイル情報を読み込めませんでした。',
+        zh: '无法加载文件信息。',
+      );
+
+  String get folder => _t(
+        en: 'Folder',
+        ko: '폴더',
+        ja: 'フォルダ',
+        zh: '文件夹',
+      );
+
+  String get filePreviewUnsupported => _t(
+        en: 'This file type is not supported for in-app preview.',
+        ko: '이 파일 형식은 앱 내 미리보기를 지원하지 않습니다.',
+        ja: 'このファイル形式はアプリ内プレビューに対応していません。',
+        zh: '此文件类型不支持应用内预览。',
+      );
+
+  String get previousFolder => _t(
+        en: 'Previous folder',
+        ko: '이전 폴더',
+        ja: '前のフォルダ',
+        zh: '上一个文件夹',
+      );
+
+  String get parentFolder => _t(
+        en: 'Parent folder',
+        ko: '상위 폴더',
+        ja: '親フォルダ',
+        zh: '父文件夹',
+      );
+
+  String get startTerminalHere => _t(
+        en: 'Start terminal session from current path',
+        ko: '현재 경로에서 터미널 세션 시작',
+        ja: '現在のパスからターミナルセッションを開始',
+        zh: '从当前路径启动终端会话',
+      );
+
+  String get upload => _t(
+        en: 'Upload',
+        ko: '업로드',
+        ja: 'アップロード',
+        zh: '上传',
+      );
+
+  String get newFolder => _t(
+        en: 'New folder',
+        ko: '새 폴더',
+        ja: '新規フォルダ',
+        zh: '新建文件夹',
+      );
+
+  String get search => _t(
+        en: 'Search',
+        ko: '검색',
+        ja: '検索',
+        zh: '搜索',
+      );
+
+  String get showHiddenFiles => _t(
+        en: 'Show hidden files',
+        ko: '숨김 파일 표시',
+        ja: '隠しファイルを表示',
+        zh: '显示隐藏文件',
+      );
+
+  String dirsCount(int count) => _t(
+        en: '$count dirs',
+        ko: '$count dirs',
+        ja: '$count dirs',
+        zh: '$count dirs',
+      );
+
+  String filesCount(int count) => _t(
+        en: '$count files',
+        ko: '$count files',
+        ja: '$count files',
+        zh: '$count files',
+      );
+
+  String get emptyDirectory => _t(
+        en: 'Empty directory',
+        ko: '비어 있는 디렉토리',
+        ja: '空のディレクトリ',
+        zh: '空目录',
+      );
+
+  String get noSearchResults => _t(
+        en: 'No search results',
+        ko: '검색 결과 없음',
+        ja: '検索結果なし',
+        zh: '没有搜索结果',
+      );
+
+  String uploadedFiles(int count) => _t(
+        en: 'Uploaded $count file${count == 1 ? '' : 's'}.',
+        ko: '$count개 파일을 업로드했습니다.',
+        ja: '$count 件のファイルをアップロードしました。',
+        zh: '已上传 $count 个文件。',
+      );
+
+  String uploadedAndSkippedFiles(int uploaded, int skipped) => _t(
+        en: 'Uploaded $uploaded file${uploaded == 1 ? '' : 's'}, skipped $skipped.',
+        ko: '$uploaded개 업로드, $skipped개 건너뜀',
+        ja: '$uploaded 件アップロード、$skipped 件スキップ',
+        zh: '已上传 $uploaded 个，跳过 $skipped 个',
+      );
+
+  String get folderName => _t(
+        en: 'Folder name',
+        ko: '폴더 이름',
+        ja: 'フォルダ名',
+        zh: '文件夹名称',
+      );
+
+  String get rename => _t(
+        en: 'Rename',
+        ko: '이름 변경',
+        ja: '名前を変更',
+        zh: '重命名',
+      );
+
+  String get newName => _t(
+        en: 'New name',
+        ko: '새 이름',
+        ja: '新しい名前',
+        zh: '新名称',
+      );
+
+  String get currentPath => _t(
+        en: 'Current path',
+        ko: '현재 경로',
+        ja: '現在のパス',
+        zh: '当前路径',
+      );
+
+  String get copy => _t(
+        en: 'Copy',
+        ko: '복사',
+        ja: 'コピー',
+        zh: '复制',
+      );
+
+  String get copyAll => _t(
+        en: 'Copy all',
+        ko: '전체 복사',
+        ja: 'すべてコピー',
+        zh: '全部复制',
+      );
+
+  String get copiedAllText => _t(
+        en: 'Copied all text.',
+        ko: '전체 텍스트를 복사했습니다.',
+        ja: '全文をコピーしました。',
+        zh: '已复制全部文本。',
+      );
+
+  String get preview => _t(
+        en: 'Preview',
+        ko: '미리보기',
+        ja: 'プレビュー',
+        zh: '预览',
+      );
+
+  String get edit => _t(
+        en: 'Edit',
+        ko: '편집',
+        ja: '編集',
+        zh: '编辑',
+      );
+
+  String get fileSaved => _t(
+        en: 'File saved.',
+        ko: '파일을 저장했습니다.',
+        ja: 'ファイルを保存しました。',
+        zh: '文件已保存。',
+      );
+
+  String saveFailed(Object error) => _t(
+        en: 'Save failed: $error',
+        ko: '저장 실패: $error',
+        ja: '保存に失敗しました: $error',
+        zh: '保存失败：$error',
+      );
+
+  String get enterContent => _t(
+        en: 'Enter content',
+        ko: '내용 입력',
+        ja: '内容を入力',
+        zh: '输入内容',
+      );
+
+  String editLanguage(String language) => _t(
+        en: 'Edit $language',
+        ko: '$language 편집',
+        ja: '$language を編集',
+        zh: '编辑 $language',
+      );
+
+  String get noTerminalText => _t(
+        en: 'No terminal text output.',
+        ko: '출력된 터미널 텍스트가 없습니다.',
+        ja: '出力されたターミナルテキストはありません。',
+        zh: '没有终端文本输出。',
+      );
+
+  String get sort => _t(
+        en: 'Sort',
+        ko: '정렬',
+        ja: '並び替え',
+        zh: '排序',
+      );
+
+  String get sortByName => _t(
+        en: 'Name',
+        ko: '이름순',
+        ja: '名前順',
+        zh: '按名称',
+      );
+
+  String get sortByType => _t(
+        en: 'Type',
+        ko: '유형순',
+        ja: '種類順',
+        zh: '按类型',
+      );
+
+  String get sortByModified => _t(
+        en: 'Modified',
+        ko: '수정일순',
+        ja: '更新日順',
+        zh: '按修改日期',
+      );
+
+  String get sortByCreated => _t(
+        en: 'Created',
+        ko: '생성일순',
+        ja: '作成日順',
+        zh: '按创建日期',
       );
 
   String get saveAndConnect => _t(
