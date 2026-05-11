@@ -32,6 +32,19 @@ SEIL is a Flutter mobile app for managing SSH workspaces, remote tmux sessions, 
 
 Remote tmux support requires `tmux` to be installed on the target server. SSH and SFTP features require the target server to allow SSH access.
 
+If `tmux` is missing on the server, install it with the command for your distribution.
+
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install -y tmux
+
+# Fedora/RHEL family
+sudo dnf install -y tmux
+
+# Arch Linux
+sudo pacman -S tmux
+```
+
 ### Project Structure
 
 This repository follows a standard Flutter project layout.
