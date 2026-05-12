@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/localization/seil_error_codes.dart';
 import '../../core/storage/local_database.dart';
 import '../../shared/models.dart';
 
@@ -26,10 +27,11 @@ class HostKeyRepository {
   }) async {
     final normalizedHost = host.trim().toLowerCase();
     if (normalizedHost.isEmpty || port <= 0 || port > 65535) {
-      throw ArgumentError('host와 port를 올바르게 입력해야 합니다.');
+      throw ArgumentError(SeilErrorCodes.hostKeyInvalid);
     }
-    if (!RegExp(r'^SHA256:[A-Za-z0-9+/]+$').hasMatch(fingerprintSha256.trim())) {
-      throw ArgumentError('SHA256 fingerprint 형식이 올바르지 않습니다.');
+    if (!RegExp(r'^SHA256:[A-Za-z0-9+/]+$')
+        .hasMatch(fingerprintSha256.trim())) {
+      throw ArgumentError(SeilErrorCodes.hostKeyFingerprintInvalid);
     }
 
     final now = DateTime.now().toUtc().toIso8601String();
@@ -50,7 +52,8 @@ class HostKeyRepository {
         'fingerprint_sha256': fingerprintSha256.trim(),
         'created_at': rows.isEmpty ? now : rows.first['created_at'] as String,
         'updated_at': now,
-        'last_verified_at': rows.isEmpty ? null : rows.first['last_verified_at'],
+        'last_verified_at':
+            rows.isEmpty ? null : rows.first['last_verified_at'],
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -58,15 +61,17 @@ class HostKeyRepository {
   }
 
   Future<TrustedHostKey> getTrustedHostKey(String id) async {
-    final rows = await database.db.query('trusted_host_keys', where: 'id = ?', whereArgs: [id], limit: 1);
+    final rows = await database.db
+        .query('trusted_host_keys', where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) {
-      throw StateError('호스트 키를 찾을 수 없습니다.');
+      throw StateError(SeilErrorCodes.hostKeyNotFound);
     }
     return _mapHostKey(rows.first);
   }
 
   Future<void> deleteTrustedHostKey(String id) async {
-    await database.db.delete('trusted_host_keys', where: 'id = ?', whereArgs: [id]);
+    await database.db
+        .delete('trusted_host_keys', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<bool> isTrusted({
@@ -101,8 +106,9 @@ class HostKeyRepository {
       fingerprintSha256: row['fingerprint_sha256'] as String,
       createdAt: parseIso(row['created_at'] as String),
       updatedAt: parseIso(row['updated_at'] as String),
-      lastVerifiedAt: row['last_verified_at'] == null ? null : parseIso(row['last_verified_at'] as String),
+      lastVerifiedAt: row['last_verified_at'] == null
+          ? null
+          : parseIso(row['last_verified_at'] as String),
     );
   }
 }
-

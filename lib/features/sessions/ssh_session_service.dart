@@ -6,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
+import '../../core/localization/seil_error_codes.dart';
 import '../../shared/models.dart';
 import '../files/file_meta.dart';
 
@@ -14,7 +15,7 @@ const maxEditBytes = 256 * 1024;
 const _tmuxDelimiter = '|||';
 const _tmuxCaptureMarker = '__SEIL_TMUX_CAPTURE_META__';
 const _tmuxPanePathMarker = '__SEIL_TMUX_PANE_PATHS__';
-const _sshClosedMessage = '재연결 중..';
+const _sshClosedMessage = SeilErrorCodes.reconnecting;
 const _sshConnectTimeout = Duration(seconds: 10);
 
 abstract class SshSessionService {
@@ -31,7 +32,7 @@ class DartSshSessionService implements SshSessionService {
     required String secret,
   }) async {
     if (connection.authMode == AuthMode.agent) {
-      throw StateError('모바일 앱에서는 SSH Agent 인증을 지원하지 않습니다.');
+      throw StateError(SeilErrorCodes.sshAgentUnsupported);
     }
 
     final socket = await SSHSocket.connect(
@@ -639,7 +640,7 @@ class LiveSshSession {
     final normalized = _normalizeRemoteDirectory(remotePath);
     final stats = await sftpClient.stat(normalized);
     if (!stats.isDirectory) {
-      throw StateError('디렉토리 경로가 필요합니다.');
+      throw StateError(SeilErrorCodes.directoryPathRequired);
     }
 
     final items = await sftpClient.listdir(normalized);
@@ -680,7 +681,7 @@ class LiveSshSession {
   Future<void> createDirectory(String parentPath, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty || trimmed.contains('/')) {
-      throw ArgumentError('폴더 이름을 올바르게 입력해야 합니다.');
+      throw ArgumentError(SeilErrorCodes.invalidFolderName);
     }
     final sftpClient = await sftp();
     await sftpClient.mkdir(p.posix.join(parentPath, trimmed));
@@ -689,7 +690,7 @@ class LiveSshSession {
   Future<void> rename(String sourcePath, String newName) async {
     final trimmed = newName.trim();
     if (trimmed.isEmpty || trimmed.contains('/')) {
-      throw ArgumentError('새 이름을 올바르게 입력해야 합니다.');
+      throw ArgumentError(SeilErrorCodes.invalidNewName);
     }
     final sftpClient = await sftp();
     await sftpClient.rename(
@@ -711,7 +712,7 @@ class LiveSshSession {
   Future<void> writeTextFile(String remotePath, String content) async {
     final bytes = Uint8List.fromList(utf8.encode(content));
     if (bytes.length > maxEditBytes) {
-      throw StateError('저장 가능 최대 크기 $maxEditBytes bytes를 초과했습니다.');
+      throw StateError(SeilErrorCodes.fileTooLarge(maxEditBytes));
     }
     final sftpClient = await sftp();
     final file = await sftpClient.open(remotePath,
@@ -730,7 +731,7 @@ class LiveSshSession {
   Future<void> uploadBytes(
       String parentPath, String name, Uint8List bytes) async {
     if (name.trim().isEmpty || name.contains('/')) {
-      throw ArgumentError('업로드 파일 이름이 올바르지 않습니다.');
+      throw ArgumentError(SeilErrorCodes.invalidUploadFileName);
     }
     final sftpClient = await sftp();
     final file = await sftpClient.open(p.posix.join(parentPath, name),
@@ -747,7 +748,7 @@ class LiveSshSession {
     Stream<List<int>> stream,
   ) async {
     if (name.trim().isEmpty || name.contains('/')) {
-      throw ArgumentError('업로드 파일 이름이 올바르지 않습니다.');
+      throw ArgumentError(SeilErrorCodes.invalidUploadFileName);
     }
     final sftpClient = await sftp();
     final file = await sftpClient.open(p.posix.join(parentPath, name),

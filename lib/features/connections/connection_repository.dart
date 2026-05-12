@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/localization/seil_error_codes.dart';
 import '../../core/storage/local_database.dart';
 import '../../core/storage/secure_vault.dart';
 import '../../shared/models.dart';
@@ -66,7 +67,7 @@ class ConnectionRepository {
     final rows = await database.db
         .query('connections', where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) {
-      throw StateError('저장된 연결 정보를 찾을 수 없습니다.');
+      throw StateError(SeilErrorCodes.savedConnectionNotFound);
     }
     return _mapConnection(rows.first);
   }
@@ -100,13 +101,13 @@ class ConnectionRepository {
         input.username.trim().isEmpty ||
         input.port <= 0 ||
         input.port > 65535) {
-      throw ArgumentError('host, username, port는 필수입니다.');
+      throw ArgumentError(SeilErrorCodes.connectionFieldsRequired);
     }
     if (input.authMode == AuthMode.agent) {
-      throw ArgumentError('모바일 1차 버전에서는 SSH Agent 인증을 지원하지 않습니다.');
+      throw ArgumentError(SeilErrorCodes.sshAgentUnsupported);
     }
     if (input.tmuxHistoryLimit <= 0) {
-      throw ArgumentError('tmux history-limit은 1 이상이어야 합니다.');
+      throw ArgumentError(SeilErrorCodes.tmuxHistoryLimitInvalid);
     }
   }
 

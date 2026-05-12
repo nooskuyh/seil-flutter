@@ -6,7 +6,11 @@
 
 Mobile multi-session tmux management app for AI agent workflows.
 
-[English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [中文](README.zh.md)
+[English](README.md) | [한국어](readmes/README.ko.md) | [日本語](readmes/README.ja.md) | [中文](readmes/README.zh.md)
+
+## Download
+
+Download the latest SEIL release from the [GitHub Releases page](https://github.com/zarathucorp/seil-flutter/releases).
 
 ## Screenshots
 

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/localization/seil_error_codes.dart';
+import '../core/localization/seil_localizations.dart';
 import '../core/settings/app_settings_repository.dart';
 import '../features/auth/auth_repository.dart';
 import '../features/connections/connection_repository.dart';
@@ -99,7 +101,7 @@ class AppState extends ChangeNotifier {
     await _run(() async {
       final user = await authRepository.authenticate(username, password);
       if (user == null) {
-        throw StateError('아이디 또는 비밀번호가 올바르지 않습니다.');
+        throw StateError(SeilErrorCodes.invalidUsernameOrPassword);
       }
       currentUser = user;
       connections = await connectionRepository.listConnections();
@@ -112,7 +114,7 @@ class AppState extends ChangeNotifier {
     await _run(() async {
       final user = await authRepository.authenticateDefault(password);
       if (user == null) {
-        throw StateError('비밀번호가 올바르지 않습니다.');
+        throw StateError(SeilErrorCodes.incorrectPassword);
       }
       currentUser = user;
       connections = await connectionRepository.listConnections();
@@ -130,7 +132,7 @@ class AppState extends ChangeNotifier {
         currentUser = await authRepository.defaultUser();
       }
       if (currentUser == null) {
-        throw StateError('사용자를 찾을 수 없습니다.');
+        throw StateError(SeilErrorCodes.userNotFound);
       }
       connections = await connectionRepository.listConnections();
       users = await authRepository.listUsers();
@@ -243,7 +245,7 @@ class AppState extends ChangeNotifier {
       final user = currentUser;
       if (enabled) {
         if (user == null) {
-          throw StateError('로그인된 사용자가 없습니다.');
+          throw StateError(SeilErrorCodes.noLoggedInUser);
         }
         final password = newPassword ?? '';
         await authRepository.setPassword(
@@ -266,7 +268,8 @@ class AppState extends ChangeNotifier {
       await settingsRepository.setLowEndModeEnabled(enabled);
     } catch (error) {
       lowEndModeEnabled = previous;
-      _setError(_displayErrorMessage(error), showPopup: false);
+      _setError(seilLocalizedErrorMessage(appLanguageCode, error),
+          showPopup: false);
       notifyListeners();
     }
   }
@@ -286,7 +289,8 @@ class AppState extends ChangeNotifier {
       await settingsRepository.saveAppLanguageCode(normalized);
     } catch (error) {
       appLanguageCode = previous;
-      _setError(_displayErrorMessage(error), showPopup: false);
+      _setError(seilLocalizedErrorMessage(appLanguageCode, error),
+          showPopup: false);
       notifyListeners();
     }
   }
@@ -328,7 +332,7 @@ class AppState extends ChangeNotifier {
           await connectionRepository.deleteConnection(connection.id);
           connections = await connectionRepository.listConnections();
         }
-        throw StateError(_connectionFailureMessage(error));
+        throw StateError(seilConnectionFailureMessage(appLanguageCode, error));
       }
     });
   }
@@ -347,7 +351,8 @@ class AppState extends ChangeNotifier {
               initialPaneIndex: initialPaneIndex,
               reuseExisting: reuseExisting);
         } catch (error) {
-          throw StateError(_connectionFailureMessage(error));
+          throw StateError(
+              seilConnectionFailureMessage(appLanguageCode, error));
         }
       });
     } finally {
@@ -387,7 +392,7 @@ class AppState extends ChangeNotifier {
         await connectionRepository.resolveSecret(connection, transientSecret);
     if (connection.authMode != AuthMode.agent &&
         (secret == null || secret.isEmpty)) {
-      throw StateError('저장된 SSH secret이 없어 다시 입력이 필요합니다.');
+      throw StateError(SeilErrorCodes.missingSshSecret);
     }
     final session = await sshSessionService.connect(
         connection: connection, secret: secret ?? '');
@@ -768,7 +773,13 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       if (DateTime.now().difference(reconnectStartedAt) >=
           _reconnectErrorDelay) {
-        _setError('SSH 재연결 실패: $error', showPopup: false);
+        _setError(
+          seilLocalizedErrorMessage(
+            appLanguageCode,
+            SeilErrorCodes.sshReconnectFailed(error),
+          ),
+          showPopup: false,
+        );
       }
     } finally {
       reconnecting = false;
@@ -1088,7 +1099,7 @@ class AppState extends ChangeNotifier {
     );
     if (oldSession.connection.authMode != AuthMode.agent &&
         (secret == null || secret.isEmpty)) {
-      throw StateError('재연결에 필요한 SSH secret이 없어 다시 연결해야 합니다.');
+      throw StateError(SeilErrorCodes.missingSshSecret);
     }
 
     final session = await sshSessionService.connect(
@@ -1175,7 +1186,8 @@ class AppState extends ChangeNotifier {
     try {
       return await action();
     } catch (error) {
-      _setError(_displayErrorMessage(error), showPopup: showErrorPopup);
+      _setError(seilLocalizedErrorMessage(appLanguageCode, error),
+          showPopup: showErrorPopup);
       return null;
     } finally {
       _busyDepth -= 1;
@@ -1203,51 +1215,6 @@ class AppState extends ChangeNotifier {
 String _joinRemotePath(String directoryPath, String name) {
   final base = directoryPath.trim().isEmpty ? '/' : directoryPath.trim();
   return base == '/' ? '/$name' : '$base/$name';
-}
-
-String _connectionFailureMessage(Object error) {
-  final message = _displayErrorMessage(error);
-  final lower = message.toLowerCase();
-  final type = error.runtimeType.toString().toLowerCase();
-  if (error is TimeoutException ||
-      lower.contains('timed out') ||
-      lower.contains('timeout')) {
-    return '연결 실패: 서버 응답 없음 (10초 초과)';
-  }
-  if (type.contains('sshauthfail') ||
-      lower.contains('auth fail') ||
-      lower.contains('authentication failed') ||
-      lower.contains('permission denied')) {
-    return '연결 실패: 인증 실패 (비밀번호 또는 개인 키를 확인해 주세요)';
-  }
-  if (lower.contains('connection refused')) {
-    return '연결 실패: 서버가 연결을 거부했습니다 (호스트/포트 또는 SSH 서비스 상태 확인)';
-  }
-  if (lower.contains('no route to host') ||
-      lower.contains('network is unreachable') ||
-      lower.contains('failed host lookup')) {
-    return '연결 실패: 서버에 도달할 수 없습니다 (네트워크 또는 호스트 주소 확인)';
-  }
-  if (lower.contains('connection reset') || lower.contains('broken pipe')) {
-    return '연결 실패: 서버가 연결을 종료했습니다 ($message)';
-  }
-  return '연결 실패: $message';
-}
-
-String _displayErrorMessage(Object error) {
-  final message = error.toString();
-  const prefixes = [
-    'Bad state: ',
-    'Invalid argument(s): ',
-    'TimeoutException: ',
-    'SocketException: ',
-  ];
-  for (final prefix in prefixes) {
-    if (message.startsWith(prefix)) {
-      return message.substring(prefix.length);
-    }
-  }
-  return message;
 }
 
 class _CachedDirectory {

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
+
+import 'seil_error_codes.dart';
 
 class SeilLocalizations {
   const SeilLocalizations(this.locale);
@@ -551,6 +555,20 @@ class SeilLocalizations {
         zh: 'tmux 会话',
       );
 
+  String get tmuxSessionLabel => _t(
+        en: 'tmux session',
+        ko: 'tmux 세션',
+        ja: 'tmux セッション',
+        zh: 'tmux 会话',
+      );
+
+  String get tmuxSelectionPending => _t(
+        en: 'Waiting for tmux selection',
+        ko: 'tmux 선택 대기',
+        ja: 'tmux 選択待ち',
+        zh: '等待选择 tmux',
+      );
+
   String get noTmuxSessionsOrLoading => _t(
         en: 'No existing tmux sessions, or still loading.',
         ko: '기존 tmux 세션이 없거나 조회 중입니다.',
@@ -661,6 +679,13 @@ class SeilLocalizations {
         ko: '현재 연결 종료',
         ja: '現在の接続を終了',
         zh: '断开当前连接',
+      );
+
+  String get reconnecting => _t(
+        en: 'Reconnecting...',
+        ko: '재연결 중..',
+        ja: '再接続中...',
+        zh: '正在重新连接...',
       );
 
   String get deleteTemplate => _t(
@@ -787,6 +812,13 @@ class SeilLocalizations {
         ko: '터미널',
         ja: 'ターミナル',
         zh: '终端',
+      );
+
+  String get terminalPreparingTmuxSession => _t(
+        en: '[seil] Preparing tmux session...',
+        ko: '[seil] tmux 세션을 준비하는 중입니다...',
+        ja: '[seil] tmux セッションを準備しています...',
+        zh: '[seil] 正在准备 tmux 会话...',
       );
 
   String get explorer => _t(
@@ -1062,6 +1094,13 @@ class SeilLocalizations {
         zh: '没有终端文本输出。',
       );
 
+  String get fullText => _t(
+        en: 'Full Text',
+        ko: '전체 텍스트',
+        ja: '全文',
+        zh: '全文',
+      );
+
   String get sort => _t(
         en: 'Sort',
         ko: '정렬',
@@ -1178,4 +1217,360 @@ class _SeilLocalizationsDelegate
 
 extension SeilLocalizationsX on BuildContext {
   SeilLocalizations get l10n => SeilLocalizations.of(this);
+}
+
+String seilLocalizedErrorMessage(String languageCode, Object error) {
+  final message = _stripErrorPrefix(error.toString());
+  final normalized = message.toLowerCase();
+  if (message == SeilErrorCodes.invalidUsernameOrPassword ||
+      message == '아이디 또는 비밀번호가 올바르지 않습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'The username or password is incorrect.',
+      ko: '아이디 또는 비밀번호가 올바르지 않습니다.',
+      ja: 'ユーザー名またはパスワードが正しくありません。',
+      zh: '用户名或密码不正确。',
+    );
+  }
+  if (message == SeilErrorCodes.incorrectPassword ||
+      message == '비밀번호가 올바르지 않습니다.' ||
+      message == '현재 비밀번호가 올바르지 않습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'The password is incorrect.',
+      ko: '비밀번호가 올바르지 않습니다.',
+      ja: 'パスワードが正しくありません。',
+      zh: '密码不正确。',
+    );
+  }
+  if (message == SeilErrorCodes.userNotFound || message == '사용자를 찾을 수 없습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'User not found.',
+      ko: '사용자를 찾을 수 없습니다.',
+      ja: 'ユーザーが見つかりません。',
+      zh: '找不到用户。',
+    );
+  }
+  if (message == SeilErrorCodes.noLoggedInUser ||
+      message == '로그인된 사용자가 없습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'No user is logged in.',
+      ko: '로그인된 사용자가 없습니다.',
+      ja: 'ログイン中のユーザーがいません。',
+      zh: '没有已登录用户。',
+    );
+  }
+  if (message == SeilErrorCodes.initialUserExists ||
+      message == '이미 초기 사용자가 존재합니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'The initial user already exists.',
+      ko: '이미 초기 사용자가 존재합니다.',
+      ja: '初期ユーザーはすでに存在します。',
+      zh: '初始用户已存在。',
+    );
+  }
+  if (message == SeilErrorCodes.protectedAccount ||
+      message == '보호 계정은 삭제할 수 없습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'Protected accounts cannot be deleted.',
+      ko: '보호 계정은 삭제할 수 없습니다.',
+      ja: '保護されたアカウントは削除できません。',
+      zh: '无法删除受保护账户。',
+    );
+  }
+  if (message == SeilErrorCodes.savedConnectionNotFound ||
+      message == '저장된 연결 정보를 찾을 수 없습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'Saved connection information was not found.',
+      ko: '저장된 연결 정보를 찾을 수 없습니다.',
+      ja: '保存された接続情報が見つかりません。',
+      zh: '找不到已保存的连接信息。',
+    );
+  }
+  if (message == SeilErrorCodes.hostKeyNotFound ||
+      message == '호스트 키를 찾을 수 없습니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'Host key not found.',
+      ko: '호스트 키를 찾을 수 없습니다.',
+      ja: 'ホストキーが見つかりません。',
+      zh: '找不到主机密钥。',
+    );
+  }
+  if (message == SeilErrorCodes.connectionFieldsRequired ||
+      message.contains('host, username, port')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Host, username, and port are required.',
+      ko: 'host, username, port는 필수입니다.',
+      ja: 'host、username、port は必須です。',
+      zh: 'Host、Username 和 Port 为必填项。',
+    );
+  }
+  if (message == SeilErrorCodes.tmuxHistoryLimitInvalid ||
+      message == 'tmux history-limit은 1 이상이어야 합니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'tmux history-limit must be at least 1.',
+      ko: 'tmux history-limit은 1 이상이어야 합니다.',
+      ja: 'tmux history-limit は 1 以上である必要があります。',
+      zh: 'tmux history-limit 必须大于等于 1。',
+    );
+  }
+  if (message == SeilErrorCodes.hostKeyInvalid ||
+      message == SeilErrorCodes.hostKeyFingerprintInvalid ||
+      message.contains('host와 port') ||
+      message.contains('SHA256 fingerprint')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'The host key information is invalid.',
+      ko: '호스트 키 정보가 올바르지 않습니다.',
+      ja: 'ホストキー情報が正しくありません。',
+      zh: '主机密钥信息无效。',
+    );
+  }
+  if (message == SeilErrorCodes.missingSshSecret ||
+      message.contains('저장된 SSH secret') ||
+      message.contains('재연결에 필요한 SSH secret')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'The saved SSH secret is missing. Enter it again to reconnect.',
+      ko: '저장된 SSH secret이 없어 다시 입력이 필요합니다.',
+      ja: '保存された SSH secret がありません。再接続するには再入力してください。',
+      zh: '缺少已保存的 SSH secret。请重新输入后再连接。',
+    );
+  }
+  if (message == SeilErrorCodes.sshAgentUnsupported ||
+      message.contains('SSH Agent 인증')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'SSH Agent authentication is not supported in the mobile app.',
+      ko: '모바일 앱에서는 SSH Agent 인증을 지원하지 않습니다.',
+      ja: 'モバイルアプリでは SSH Agent 認証に対応していません。',
+      zh: '移动应用不支持 SSH Agent 认证。',
+    );
+  }
+  if (message == SeilErrorCodes.directoryPathRequired ||
+      message == '디렉토리 경로가 필요합니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'A directory path is required.',
+      ko: '디렉토리 경로가 필요합니다.',
+      ja: 'ディレクトリパスが必要です。',
+      zh: '需要目录路径。',
+    );
+  }
+  if (message == SeilErrorCodes.invalidFolderName ||
+      message == '폴더 이름을 올바르게 입력해야 합니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'Enter a valid folder name.',
+      ko: '폴더 이름을 올바르게 입력해야 합니다.',
+      ja: '有効なフォルダ名を入力してください。',
+      zh: '请输入有效的文件夹名称。',
+    );
+  }
+  if (message == SeilErrorCodes.invalidNewName ||
+      message == '새 이름을 올바르게 입력해야 합니다.') {
+    return _localizedByCode(
+      languageCode,
+      en: 'Enter a valid new name.',
+      ko: '새 이름을 올바르게 입력해야 합니다.',
+      ja: '有効な新しい名前を入力してください。',
+      zh: '请输入有效的新名称。',
+    );
+  }
+  if (message == SeilErrorCodes.invalidUploadFileName ||
+      message.contains('업로드 파일 이름이 올바르지 않습니다.')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'The upload file name is invalid.',
+      ko: '업로드 파일 이름이 올바르지 않습니다.',
+      ja: 'アップロードファイル名が正しくありません。',
+      zh: '上传文件名无效。',
+    );
+  }
+  if (message.startsWith(SeilErrorCodes.invalidPasswordLengthPrefix) ||
+      message.contains('비밀번호는')) {
+    final lengths = _parseIntPair(
+      message.substring(
+        message.startsWith(SeilErrorCodes.invalidPasswordLengthPrefix)
+            ? SeilErrorCodes.invalidPasswordLengthPrefix.length
+            : 0,
+      ),
+    );
+    final minLength = lengths?.$1 ?? 10;
+    final maxLength = lengths?.$2 ?? 128;
+    return _localizedByCode(
+      languageCode,
+      en: 'Password must be $minLength-$maxLength characters.',
+      ko: '비밀번호는 $minLength-$maxLength자로 입력해야 합니다.',
+      ja: 'パスワードは $minLength-$maxLength 文字で入力してください。',
+      zh: '密码长度必须为 $minLength-$maxLength 个字符。',
+    );
+  }
+  if (message == SeilErrorCodes.invalidUsername || message.contains('아이디는')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Username must be 3-64 characters and use only letters, numbers, ., _, -, or @.',
+      ko: '아이디는 3-64자의 영문, 숫자, ., _, -, @ 만 사용할 수 있습니다.',
+      ja: 'ID は 3-64 文字で、英数字と ., _, -, @ のみ使用できます。',
+      zh: '用户名必须为 3-64 个字符，并且只能使用字母、数字、.、_、-、@。',
+    );
+  }
+  if (message == SeilErrorCodes.invalidDisplayName || message.contains('이름은')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Name must be 1-80 characters.',
+      ko: '이름은 1-80자로 입력해야 합니다.',
+      ja: '名前は 1-80 文字で入力してください。',
+      zh: '名称必须为 1-80 个字符。',
+    );
+  }
+  if (message.startsWith(SeilErrorCodes.fileTooLargePrefix) ||
+      message.contains('저장 가능 최대 크기')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'The file exceeds the maximum editable size.',
+      ko: '파일이 편집 가능한 최대 크기를 초과했습니다.',
+      ja: '編集可能な最大サイズを超えています。',
+      zh: '文件超过可编辑的最大大小。',
+    );
+  }
+  if (message == SeilErrorCodes.reconnecting || message.contains('재연결 중')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Reconnecting...',
+      ko: '재연결 중...',
+      ja: '再接続中...',
+      zh: '正在重新连接...',
+    );
+  }
+  if (message.startsWith(SeilErrorCodes.sshReconnectFailedPrefix) ||
+      normalized.startsWith('ssh 재연결 실패:')) {
+    final detail = message.startsWith(SeilErrorCodes.sshReconnectFailedPrefix)
+        ? message.substring(SeilErrorCodes.sshReconnectFailedPrefix.length)
+        : message.substring('SSH 재연결 실패:'.length).trim();
+    return _localizedByCode(
+      languageCode,
+      en: 'SSH reconnect failed: $detail',
+      ko: 'SSH 재연결 실패: $detail',
+      ja: 'SSH の再接続に失敗しました: $detail',
+      zh: 'SSH 重新连接失败：$detail',
+    );
+  }
+  return message;
+}
+
+String seilConnectionFailureMessage(String languageCode, Object error) {
+  final message = seilLocalizedErrorMessage(languageCode, error);
+  final lower = message.toLowerCase();
+  final type = error.runtimeType.toString().toLowerCase();
+  if (error is TimeoutException ||
+      lower.contains('timed out') ||
+      lower.contains('timeout')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Connection failed: server did not respond (10s timeout)',
+      ko: '연결 실패: 서버 응답 없음 (10초 초과)',
+      ja: '接続に失敗しました: サーバーが応答しません (10 秒タイムアウト)',
+      zh: '连接失败：服务器未响应（10 秒超时）',
+    );
+  }
+  if (type.contains('sshauthfail') ||
+      lower.contains('auth fail') ||
+      lower.contains('authentication failed') ||
+      lower.contains('permission denied')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Connection failed: authentication failed. Check your password or private key.',
+      ko: '연결 실패: 인증 실패 (비밀번호 또는 개인 키를 확인해 주세요)',
+      ja: '接続に失敗しました: 認証に失敗しました。パスワードまたは秘密鍵を確認してください。',
+      zh: '连接失败：认证失败。请检查密码或私钥。',
+    );
+  }
+  if (lower.contains('connection refused')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Connection failed: server refused the connection. Check host, port, or SSH service status.',
+      ko: '연결 실패: 서버가 연결을 거부했습니다 (호스트/포트 또는 SSH 서비스 상태 확인)',
+      ja: '接続に失敗しました: サーバーが接続を拒否しました。ホスト、ポート、SSH サービスを確認してください。',
+      zh: '连接失败：服务器拒绝连接。请检查主机、端口或 SSH 服务状态。',
+    );
+  }
+  if (lower.contains('no route to host') ||
+      lower.contains('network is unreachable') ||
+      lower.contains('failed host lookup')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Connection failed: server is unreachable. Check the network or host address.',
+      ko: '연결 실패: 서버에 도달할 수 없습니다 (네트워크 또는 호스트 주소 확인)',
+      ja: '接続に失敗しました: サーバーに到達できません。ネットワークまたはホストアドレスを確認してください。',
+      zh: '连接失败：无法到达服务器。请检查网络或主机地址。',
+    );
+  }
+  if (lower.contains('connection reset') || lower.contains('broken pipe')) {
+    return _localizedByCode(
+      languageCode,
+      en: 'Connection failed: server closed the connection ($message)',
+      ko: '연결 실패: 서버가 연결을 종료했습니다 ($message)',
+      ja: '接続に失敗しました: サーバーが接続を終了しました ($message)',
+      zh: '连接失败：服务器关闭了连接（$message）',
+    );
+  }
+  return _localizedByCode(
+    languageCode,
+    en: 'Connection failed: $message',
+    ko: '연결 실패: $message',
+    ja: '接続に失敗しました: $message',
+    zh: '连接失败：$message',
+  );
+}
+
+(int, int)? _parseIntPair(String message) {
+  final match = RegExp(r'(\d+)\D+(\d+)').firstMatch(message);
+  if (match == null) {
+    return null;
+  }
+  final first = int.tryParse(match.group(1) ?? '');
+  final second = int.tryParse(match.group(2) ?? '');
+  if (first == null || second == null) {
+    return null;
+  }
+  return (first, second);
+}
+
+String _stripErrorPrefix(String message) {
+  const prefixes = [
+    'Bad state: ',
+    'Invalid argument(s): ',
+    'TimeoutException: ',
+    'SocketException: ',
+  ];
+  for (final prefix in prefixes) {
+    if (message.startsWith(prefix)) {
+      return message.substring(prefix.length);
+    }
+  }
+  return message;
+}
+
+String _localizedByCode(
+  String languageCode, {
+  required String en,
+  required String ko,
+  required String ja,
+  required String zh,
+}) {
+  return switch (languageCode.toLowerCase()) {
+    'ko' => ko,
+    'ja' => ja,
+    'zh' => zh,
+    _ => en,
+  };
 }

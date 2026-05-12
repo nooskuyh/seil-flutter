@@ -4,26 +4,34 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../localization/seil_error_codes.dart';
+
 const passwordMinLength = 10;
 const passwordMaxLength = 128;
 final usernamePattern = RegExp(r'^[a-zA-Z0-9._@-]{3,64}$');
 
 void assertUsername(String username) {
   if (!usernamePattern.hasMatch(username)) {
-    throw ArgumentError('아이디는 3-64자의 영문, 숫자, ., _, -, @ 만 사용할 수 있습니다.');
+    throw ArgumentError(SeilErrorCodes.invalidUsername);
   }
 }
 
 void assertDisplayName(String name) {
   final trimmed = name.trim();
   if (trimmed.isEmpty || trimmed.length > 80) {
-    throw ArgumentError('이름은 1-80자로 입력해야 합니다.');
+    throw ArgumentError(SeilErrorCodes.invalidDisplayName);
   }
 }
 
 void assertPassword(String password) {
-  if (password.length < passwordMinLength || password.length > passwordMaxLength) {
-    throw ArgumentError('비밀번호는 $passwordMinLength-$passwordMaxLength자로 입력해야 합니다.');
+  if (password.length < passwordMinLength ||
+      password.length > passwordMaxLength) {
+    throw ArgumentError(
+      SeilErrorCodes.invalidPasswordLength(
+        passwordMinLength,
+        passwordMaxLength,
+      ),
+    );
   }
 }
 
@@ -90,4 +98,3 @@ bool _constantTimeEquals(Uint8List left, Uint8List right) {
   }
   return diff == 0;
 }
-

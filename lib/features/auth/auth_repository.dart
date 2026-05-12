@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../../core/crypto/password_hash.dart';
+import '../../core/localization/seil_error_codes.dart';
 import '../../core/storage/local_database.dart';
 import '../../shared/models.dart';
 
@@ -26,7 +27,7 @@ class AuthRepository {
     assertPassword(password);
 
     if (await hasUsers()) {
-      throw StateError('이미 초기 사용자가 존재합니다.');
+      throw StateError(SeilErrorCodes.initialUserExists);
     }
 
     final now = DateTime.now().toUtc();
@@ -106,7 +107,7 @@ class AuthRepository {
     final rows = await database.db
         .query('users', where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) {
-      throw StateError('사용자를 찾을 수 없습니다.');
+      throw StateError(SeilErrorCodes.userNotFound);
     }
     return _mapUser(rows.first);
   }
@@ -147,13 +148,13 @@ class AuthRepository {
     final rows = await database.db
         .query('users', where: 'id = ?', whereArgs: [userId], limit: 1);
     if (rows.isEmpty) {
-      throw StateError('사용자를 찾을 수 없습니다.');
+      throw StateError(SeilErrorCodes.userNotFound);
     }
 
     final matched = await verifyPassword(
         currentPassword, rows.first['password_hash'] as String);
     if (!matched) {
-      throw StateError('현재 비밀번호가 올바르지 않습니다.');
+      throw StateError(SeilErrorCodes.incorrectPassword);
     }
 
     final now = DateTime.now().toUtc().toIso8601String();
@@ -190,7 +191,7 @@ class AuthRepository {
   Future<void> deleteUser(String userId) async {
     final user = await getUserById(userId);
     if (user.protectedAccount) {
-      throw StateError('보호 계정은 삭제할 수 없습니다.');
+      throw StateError(SeilErrorCodes.protectedAccount);
     }
     await database.db.delete('users', where: 'id = ?', whereArgs: [userId]);
   }

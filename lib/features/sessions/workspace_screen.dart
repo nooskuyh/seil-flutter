@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../core/localization/seil_error_codes.dart';
 import '../../core/localization/seil_localizations.dart';
 import '../../shared/app_state.dart';
 import '../../shared/models.dart';
@@ -25,7 +26,6 @@ const _glassStroke = Color(0xB8FFFFFF);
 const _sheetFill = Color(0xF4F8FAFC);
 const _terminalSelection = Color(0x666BA6FF);
 const _terminalSelectionHandle = Color(0xFF73D0FF);
-const _sshClosedMessage = '재연결 중..';
 const _terminalFontFamily = 'FiraCodeNerdFontMono';
 const _terminalFontSize = 6.0;
 const _terminalMinFontSize = 4.0;
@@ -442,7 +442,11 @@ class _WorkspaceCommandBar extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        _workspaceSessionSubtitle(state, session),
+                        _workspaceSessionSubtitle(
+                          context.l10n,
+                          state,
+                          session,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1962,7 +1966,9 @@ class _TerminalPaneState extends State<TerminalPane> {
       final closed =
           polledSession?.isClosed == true || _isClosedSshError(error);
       if (mounted) {
-        localError = closed ? _sshClosedMessage : error.toString();
+        localError = closed
+            ? context.l10n.reconnecting
+            : _localizedTerminalError(context, error);
         viewNotifier.value = _TerminalViewData(
           frame: frame,
           error: localError,
@@ -2171,7 +2177,7 @@ class _TerminalPaneState extends State<TerminalPane> {
     pollingStopped = true;
     pollTimer?.cancel();
     if (mounted) {
-      localError = _sshClosedMessage;
+      localError = context.l10n.reconnecting;
       viewNotifier.value = _TerminalViewData(frame: frame, error: localError);
     }
     unawaited(widget.state.reconnectClosedSessions());
@@ -2370,7 +2376,8 @@ class _CaptureTerminalViewState extends State<_CaptureTerminalView> {
     final lowEndMode = _WorkspacePerformance.lowEndModeOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final content = _terminalDisplayText(widget.frame.content);
+        final content =
+            _terminalDisplayText(widget.frame.content, context.l10n);
         final textSpan = TextSpan(
           style: TextStyle(
             color: _terminalForeground,
@@ -3374,9 +3381,9 @@ double _terminalCharacterWidth(double fontSize) {
   return width;
 }
 
-String _terminalDisplayText(String rawText) {
+String _terminalDisplayText(String rawText, SeilLocalizations l10n) {
   return rawText.isEmpty
-      ? '[seil] tmux 세션을 준비하는 중입니다...$_terminalBottomPaddingLines'
+      ? '${l10n.terminalPreparingTmuxSession}$_terminalBottomPaddingLines'
       : '$rawText$_terminalBottomPaddingLines';
 }
 
@@ -3730,13 +3737,20 @@ String _temporaryUploadName(String originalName) {
 
 bool _isClosedSshError(Object error) {
   final message = error.toString().toLowerCase();
-  return message.contains('ssh 연결이 종료되었습니다') ||
-      message.contains('ssh 연결이 끊겼습니다') ||
-      message.contains('자동 재연결') ||
-      message.contains('재연결 중') ||
+  return message.contains(SeilErrorCodes.reconnecting.toLowerCase()) ||
       message.contains('transport is closed') ||
       message.contains('connection closed while waiting for channel open') ||
       message.contains('sshstateerror(connection closed');
+}
+
+String _localizedTerminalError(BuildContext context, Object error) {
+  if (_isClosedSshError(error)) {
+    return context.l10n.reconnecting;
+  }
+  return seilLocalizedErrorMessage(
+    Localizations.localeOf(context).languageCode,
+    error,
+  );
 }
 
 class FileExplorerPane extends StatefulWidget {
@@ -4590,10 +4604,15 @@ String _workspaceSessionTitle(AppState state, LiveSshSession session) {
   return _compactPathDisplay(session.currentPath);
 }
 
-String _workspaceSessionSubtitle(AppState state, LiveSshSession session) {
+String _workspaceSessionSubtitle(
+  SeilLocalizations l10n,
+  AppState state,
+  LiveSshSession session,
+) {
   final tmuxName = session.selectedTmuxSessionName;
-  final tmuxPart =
-      tmuxName == null || tmuxName.isEmpty ? 'tmux 선택 대기' : 'tmux 세션';
+  final tmuxPart = tmuxName == null || tmuxName.isEmpty
+      ? l10n.tmuxSelectionPending
+      : l10n.tmuxSessionLabel;
   return '$tmuxPart · ${_compactPathDisplay(state.sessionLabel(session))}';
 }
 
@@ -4981,7 +5000,7 @@ class FullTextScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Full Text'),
+        title: Text(context.l10n.fullText),
         actions: [
           _ToolbarButton(
             icon: LucideIcons.copy,

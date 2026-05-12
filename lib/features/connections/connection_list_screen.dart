@@ -347,7 +347,6 @@ class _ConnectionFormState extends State<_ConnectionForm> {
       TextEditingController(text: defaultTmuxHistoryLimit.toString());
   final secret = TextEditingController();
   AuthMode authMode = AuthMode.password;
-  int initialPaneIndex = 0;
   bool saveSecret = false;
   bool submitting = false;
   String? formError;
@@ -509,24 +508,6 @@ class _ConnectionFormState extends State<_ConnectionForm> {
                   : (value) => setState(() => saveSecret = value),
               title: Text(l10n.saveSecretOnDevice),
             ),
-            SegmentedButton<int>(
-              segments: [
-                ButtonSegment(
-                  value: 0,
-                  icon: const Icon(LucideIcons.terminal, size: 16),
-                  label: Text(l10n.terminal),
-                ),
-                ButtonSegment(
-                  value: 1,
-                  icon: const Icon(LucideIcons.folder, size: 16),
-                  label: Text(l10n.explorer),
-                ),
-              ],
-              selected: {initialPaneIndex},
-              onSelectionChanged: submitting
-                  ? null
-                  : (value) => setState(() => initialPaneIndex = value.first),
-            ),
             if (formError != null) ...[
               const SizedBox(height: 12),
               _InlineFormError(message: formError!),
@@ -573,7 +554,7 @@ class _ConnectionFormState extends State<_ConnectionForm> {
         secret: secret.text,
         saveSecret: saveSecret,
       ),
-      initialPaneIndex: initialPaneIndex,
+      initialPaneIndex: 0,
     );
     if (!mounted) {
       return;
