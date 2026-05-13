@@ -4,6 +4,12 @@
 *.pyc
 *.swp
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
+Icon?
+.Spotlight-V100
+.Trashes
 .atom/
 .build/
 .buildlog/
