@@ -60,6 +60,9 @@ app.*.map.json
 /release/google/
 /release/github/
 
+# GitHub Actions release watcher state is restored from cache.
+/.github/state/
+
 # Release signing, credentials, and environment files
 # Android release signing files must stay local.
 key.properties
