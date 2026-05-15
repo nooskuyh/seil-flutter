@@ -1,4 +1,4 @@
-name: Detect Google Play Release
+name: Check Google Play Release
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     - cron: "17 * * * *"
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
@@ -23,6 +24,7 @@ jobs:
       GOOGLE_PLAY_TRACKS: production,alpha
       PLAY_RELEASE_STATE_PATH: .github/state/google-play-release-state.json
       NOTIFY_ON_FIRST_RUN: "false"
+      NOTIFICATION_WORKFLOW_FILE: google-play-release-notification.yml
 
     steps:
       - name: Check out repository
@@ -44,7 +46,7 @@ jobs:
       - name: Detect release updates
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/detect-google-play-release.mjs
 
       - name: Save Play snapshot

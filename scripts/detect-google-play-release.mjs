@@ -12,6 +12,7 @@ const packageName = readEnv('GOOGLE_PLAY_PACKAGE_NAME', 'com.zarathu.seil');
 const tracks = readListEnv('GOOGLE_PLAY_TRACKS', ['production', 'alpha']);
 const statePath = readEnv('PLAY_RELEASE_STATE_PATH', '.github/state/google-play-release-state.json');
 const notifyOnFirstRun = readBoolEnv('NOTIFY_ON_FIRST_RUN', false);
+const notificationWorkflowFile = readEnv('NOTIFICATION_WORKFLOW_FILE', 'google-play-release-notification.yml');
 
 main().catch(async (error) => {
   console.error(`::error::${error.message}`);
@@ -41,11 +42,11 @@ async function main() {
   }
 
   if (isFirstRun && !notifyOnFirstRun) {
-    console.log('Initial Google Play snapshot saved without Slack notification.');
+    console.log('Initial Google Play snapshot saved without notification dispatch.');
     return;
   }
 
-  await postSlackNotification(changes, currentState);
+  await dispatchNotificationWorkflow(changes, currentState);
 }
 
 function requiredEnv(name) {
@@ -309,62 +310,66 @@ function collectVersionCodes(track) {
   return normalizeVersionCodes(track.releases.flatMap((release) => release.versionCodes));
 }
 
-async function postSlackNotification(changes, currentState) {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-  if (!webhookUrl || webhookUrl.trim() === '') {
-    console.log('::warning::New Google Play version detected, but SLACK_WEBHOOK_URL is not configured.');
-    return;
-  }
-
+async function dispatchNotificationWorkflow(changes, currentState) {
+  const token = requiredEnv('GITHUB_TOKEN');
+  const repository = requiredEnv('GITHUB_REPOSITORY');
+  const ref = readEnv('GITHUB_REF_NAME', 'main');
   const runUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
     ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : null;
-  const changeLines = changes.map(formatSlackChange).join('\n');
-  const payload = {
-    text: `Google Play 새 버전 감지: ${currentState.packageName}`,
-    blocks: [
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: 'Google Play 새 버전 감지',
+  const response = await fetch(
+    `https://api.github.com/repos/${repository}/actions/workflows/${encodeURIComponent(notificationWorkflowFile)}/dispatches`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify({
+        ref,
+        inputs: {
+          package_name: currentState.packageName,
+          observed_at: currentState.observedAt,
+          play_store_url: getPlayStoreUrl(currentState.packageName),
+          source_run_url: runUrl ?? '',
+          changes_markdown: formatChangesMarkdown(changes),
+          release_notes_markdown: formatReleaseNotesMarkdown(changes),
         },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Package*: \`${currentState.packageName}\`\n*Play Store*: ${getPlayStoreUrl(currentState.packageName)}\n${changeLines}`,
-        },
-      },
-      {
-        type: 'context',
-        elements: [
-          {
-            type: 'mrkdwn',
-            text: runUrl ? `<${runUrl}|GitHub Actions run>에서 감지됨` : 'GitHub Actions에서 감지됨',
-          },
-        ],
-      },
-    ],
-  };
-
-  const response = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+      }),
+    },
+  );
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Slack webhook request failed: ${response.status}`, { cause: body });
+    throw new Error(`GitHub workflow dispatch failed: ${response.status}`, { cause: body });
   }
-  console.log('Slack notification sent.');
+  console.log(`Notification workflow dispatched: ${notificationWorkflowFile}`);
 }
 
-function formatSlackChange(change) {
-  const releaseDetails = change.releases.map(formatRelease).filter(Boolean).join(', ');
-  const suffix = releaseDetails ? ` (${releaseDetails})` : '';
-  return `*${change.track}*: versionCode ${change.addedVersionCodes.join(', ')}${suffix}`;
+function formatChangesMarkdown(changes) {
+  return changes.map((change) => {
+    const releaseDetails = change.releases.map(formatRelease).filter(Boolean).join(', ');
+    const suffix = releaseDetails ? ` (${releaseDetails})` : '';
+    return `- \`${change.track}\`: versionCode ${change.addedVersionCodes.join(', ')}${suffix}`;
+  }).join('\n');
+}
+
+function formatReleaseNotesMarkdown(changes) {
+  const lines = changes.flatMap((change) => change.releases.flatMap((release) => {
+    const versionCodes = release.versionCodes.join(', ') || 'unknown';
+    const releaseName = release.name ? ` / ${release.name}` : '';
+    return release.releaseNotes.map((releaseNote) => (
+      [
+        `#### ${change.track} / versionCode ${versionCodes}${releaseName} / ${releaseNote.language}`,
+        '',
+        '```text',
+        releaseNote.text.trim(),
+        '```',
+        '',
+      ].join('\n')
+    ));
+  }));
+  return lines.join('\n').trim();
 }
 
 function formatRelease(release) {
