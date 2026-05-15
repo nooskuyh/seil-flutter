@@ -2,8 +2,103 @@ enum AuthMode { password, privateKey, agent }
 
 enum FilePreviewKind { dir, code, markdown, image, download }
 
+enum TerminalAttentionState { none, running, completed, actionRequired }
+
 const defaultTmuxHistoryLimit = 2000;
 const recommendedTmuxHistoryLimit = 20000;
+
+TerminalAttentionState terminalAttentionFromTmux({
+  String? terminalTitle,
+  String? windowName,
+  String? windowFlags,
+  String? windowActivityFlag,
+  String? windowBellFlag,
+}) {
+  final text = [
+    terminalTitle,
+    windowName,
+  ].whereType<String>().join(' ').toLowerCase();
+  if (_containsActionRequiredText(text)) {
+    return TerminalAttentionState.actionRequired;
+  }
+  if (_containsRunningTitle(text)) {
+    return TerminalAttentionState.running;
+  }
+  if (windowBellFlag?.trim() == '1' || (windowFlags?.contains('!') ?? false)) {
+    return TerminalAttentionState.completed;
+  }
+  return TerminalAttentionState.none;
+}
+
+bool _containsActionRequiredText(String text) {
+  return text.contains('action required') ||
+      text.contains('approval requested') ||
+      text.contains('permission requested') ||
+      text.contains('requires approval') ||
+      text.contains('needs approval');
+}
+
+bool _containsRunningTitle(String text) {
+  const spinnerFrames = [
+    '⠋',
+    '⠙',
+    '⠹',
+    '⠸',
+    '⠼',
+    '⠴',
+    '⠦',
+    '⠧',
+    '⠇',
+    '⠏',
+  ];
+  if (spinnerFrames.any(text.contains)) {
+    return true;
+  }
+  final looksLikeCodexTitle = text.contains('codex') ||
+      text.contains('agent') ||
+      text.contains('claude');
+  return looksLikeCodexTitle &&
+      (text.contains('working') ||
+          text.contains('thinking') ||
+          text.contains('running'));
+}
+
+TerminalAttentionState maxTerminalAttentionState(
+  TerminalAttentionState left,
+  TerminalAttentionState right,
+) {
+  return _terminalAttentionPriority(left) >= _terminalAttentionPriority(right)
+      ? left
+      : right;
+}
+
+TerminalAttentionState terminalAttentionFromTransition({
+  required TerminalAttentionState previous,
+  required TerminalAttentionState current,
+}) {
+  if (current != TerminalAttentionState.none) {
+    return current;
+  }
+  if (previous == TerminalAttentionState.running ||
+      previous == TerminalAttentionState.actionRequired ||
+      previous == TerminalAttentionState.completed) {
+    return TerminalAttentionState.completed;
+  }
+  return TerminalAttentionState.none;
+}
+
+int _terminalAttentionPriority(TerminalAttentionState state) {
+  switch (state) {
+    case TerminalAttentionState.actionRequired:
+      return 3;
+    case TerminalAttentionState.running:
+      return 2;
+    case TerminalAttentionState.completed:
+      return 1;
+    case TerminalAttentionState.none:
+      return 0;
+  }
+}
 
 class RemoteTmuxSession {
   const RemoteTmuxSession({
@@ -13,6 +108,9 @@ class RemoteTmuxSession {
     required this.createdAt,
     required this.lastActivityAt,
     required this.currentPath,
+    this.attentionState = TerminalAttentionState.none,
+    this.terminalTitle,
+    this.windowFlags,
   });
 
   final String name;
@@ -21,6 +119,9 @@ class RemoteTmuxSession {
   final DateTime? createdAt;
   final DateTime? lastActivityAt;
   final String? currentPath;
+  final TerminalAttentionState attentionState;
+  final String? terminalTitle;
+  final String? windowFlags;
 
   bool get attached => attachedClients > 0;
 }

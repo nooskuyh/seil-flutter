@@ -510,8 +510,12 @@ class AppState extends ChangeNotifier {
     if (silent) {
       try {
         final previous = List<RemoteTmuxSession>.from(session.tmuxSessions);
-        final sessions = await session.listTmuxSessions();
+        final sessions = _resolveTmuxAttentionTransitions(
+          previous: previous,
+          current: await session.listTmuxSessions(),
+        );
         if (_tmuxSessionListsEqual(previous, sessions)) {
+          _syncTmuxSessionsForClient(session, sessions);
           return;
         }
         _syncTmuxSessionsForClient(session, sessions);
@@ -522,7 +526,12 @@ class AppState extends ChangeNotifier {
       return;
     }
     await _run(() async {
-      _syncTmuxSessionsForClient(session, await session.listTmuxSessions());
+      final previous = List<RemoteTmuxSession>.from(session.tmuxSessions);
+      final sessions = _resolveTmuxAttentionTransitions(
+        previous: previous,
+        current: await session.listTmuxSessions(),
+      );
+      _syncTmuxSessionsForClient(session, sessions);
     });
   }
 
@@ -545,6 +554,38 @@ class AppState extends ChangeNotifier {
           ? tmuxSession.currentPath!.trim()
           : session.currentPath;
       await loadDirectory(path, addToHistory: false);
+    }
+  }
+
+  void acknowledgeCompletedTmuxSession(RemoteTmuxSession tmuxSession) {
+    if (tmuxSession.attentionState != TerminalAttentionState.completed) {
+      return;
+    }
+    final session = activeSession;
+    if (session == null) {
+      return;
+    }
+    var changed = false;
+    for (final liveSession in liveSessions) {
+      if (liveSession.client != session.client) {
+        continue;
+      }
+      final nextSessions = [
+        for (final item in liveSession.tmuxSessions)
+          item.name == tmuxSession.name
+              ? _copyTmuxSessionWithAttention(
+                  item,
+                  TerminalAttentionState.none,
+                )
+              : item,
+      ];
+      if (!_tmuxSessionListsEqual(liveSession.tmuxSessions, nextSessions)) {
+        liveSession.tmuxSessions = nextSessions;
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
     }
   }
 
@@ -613,6 +654,9 @@ class AppState extends ChangeNotifier {
                   createdAt: tmuxSession.createdAt,
                   lastActivityAt: tmuxSession.lastActivityAt,
                   currentPath: trimmed,
+                  attentionState: tmuxSession.attentionState,
+                  terminalTitle: tmuxSession.terminalTitle,
+                  windowFlags: tmuxSession.windowFlags,
                 )
               : tmuxSession,
       ];
@@ -1199,6 +1243,46 @@ class AppState extends ChangeNotifier {
     source.tmuxSessions = List<RemoteTmuxSession>.from(nextSessions);
   }
 
+  List<RemoteTmuxSession> _resolveTmuxAttentionTransitions({
+    required List<RemoteTmuxSession> previous,
+    required List<RemoteTmuxSession> current,
+  }) {
+    final previousByName = {
+      for (final session in previous) session.name: session,
+    };
+    return [
+      for (final session in current)
+        _copyTmuxSessionWithAttention(
+          session,
+          terminalAttentionFromTransition(
+            previous: previousByName[session.name]?.attentionState ??
+                TerminalAttentionState.none,
+            current: session.attentionState,
+          ),
+        ),
+    ];
+  }
+
+  RemoteTmuxSession _copyTmuxSessionWithAttention(
+    RemoteTmuxSession session,
+    TerminalAttentionState attentionState,
+  ) {
+    if (session.attentionState == attentionState) {
+      return session;
+    }
+    return RemoteTmuxSession(
+      name: session.name,
+      windows: session.windows,
+      attachedClients: session.attachedClients,
+      createdAt: session.createdAt,
+      lastActivityAt: session.lastActivityAt,
+      currentPath: session.currentPath,
+      attentionState: attentionState,
+      terminalTitle: session.terminalTitle,
+      windowFlags: session.windowFlags,
+    );
+  }
+
   void _appendSelectedTmuxSessionForClient(LiveSshSession source) {
     final entry = _selectedTmuxSessionEntry(source);
     if (entry == null) {
@@ -1318,7 +1402,10 @@ class AppState extends ChangeNotifier {
           a.attachedClients != b.attachedClients ||
           a.createdAt != b.createdAt ||
           a.lastActivityAt != b.lastActivityAt ||
-          a.currentPath != b.currentPath) {
+          a.currentPath != b.currentPath ||
+          a.attentionState != b.attentionState ||
+          a.terminalTitle != b.terminalTitle ||
+          a.windowFlags != b.windowFlags) {
         return false;
       }
     }

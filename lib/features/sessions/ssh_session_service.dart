@@ -14,9 +14,12 @@ const maxPreviewBytes = 64 * 1024;
 const maxEditBytes = 256 * 1024;
 const _tmuxDelimiter = '|||';
 const _tmuxCaptureMarker = '__SEIL_TMUX_CAPTURE_META__';
+const _tmuxWindowMarker = '__SEIL_TMUX_WINDOWS__';
 const _tmuxPanePathMarker = '__SEIL_TMUX_PANE_PATHS__';
 const _sshClosedMessage = SeilErrorCodes.reconnecting;
 const _sshConnectTimeout = Duration(seconds: 10);
+
+enum _TmuxListSection { sessions, windows, panes }
 
 abstract class SshSessionService {
   Future<LiveSshSession> connect({
@@ -259,6 +262,7 @@ class LiveSshSession {
         'tmux set-environment -t $exactTarget COLORTERM truecolor 2>/dev/null || true',
         'tmux set-environment -t $exactTarget TERM_PROGRAM Seil 2>/dev/null || true',
         'tmux set-window-option -t $exactTarget pane-border-status off 2>/dev/null || true',
+        'tmux set-window-option -t $exactTarget monitor-bell on 2>/dev/null || true',
         'tmux set-option -s escape-time 10 2>/dev/null || true',
         'tmux set-option -s focus-events on 2>/dev/null || true',
         'tmux display-message -p -t ${_quoteShellToken('$targetName:')} "#{pane_id}$_tmuxDelimiter#{cursor_x}$_tmuxDelimiter#{cursor_y}$_tmuxDelimiter#{pane_width}$_tmuxDelimiter#{pane_height}$_tmuxDelimiter#{pane_mode}$_tmuxDelimiter#{history_size}" 2>/dev/null || true',
@@ -458,33 +462,49 @@ class LiveSshSession {
     final output = await runCommand(
       [
         'tmux list-sessions -F "S$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{session_windows}$_tmuxDelimiter#{session_attached}$_tmuxDelimiter#{session_created}$_tmuxDelimiter#{session_activity}" 2>/dev/null || true',
+        'printf "\\n$_tmuxWindowMarker\\n"',
+        'tmux list-windows -a -F "W$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{window_flags}$_tmuxDelimiter#{window_activity_flag}$_tmuxDelimiter#{window_bell_flag}$_tmuxDelimiter#{window_activity}$_tmuxDelimiter#{window_name}" 2>/dev/null || true',
         'printf "\\n$_tmuxPanePathMarker\\n"',
-        'tmux list-panes -a -F "P$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{pane_active}$_tmuxDelimiter#{pane_current_path}" 2>/dev/null || true',
+        'tmux list-panes -a -F "P$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{pane_active}$_tmuxDelimiter#{pane_current_path}$_tmuxDelimiter#{pane_title}" 2>/dev/null || true',
       ].join('; '),
     );
     final panePaths = <String, String>{};
+    final paneTitles = <String, String>{};
+    final attentionBySession = <String, TerminalAttentionState>{};
+    final terminalTitleBySession = <String, String>{};
+    final windowFlagsBySession = <String, String>{};
     final sessionLines = <String>[];
-    var parsingPanePaths = false;
+    var section = _TmuxListSection.sessions;
     for (final line in const LineSplitter().convert(output)) {
-      if (line == _tmuxPanePathMarker) {
-        parsingPanePaths = true;
+      if (line == _tmuxWindowMarker) {
+        section = _TmuxListSection.windows;
         continue;
       }
-      if (parsingPanePaths) {
-        final parts = line.split(_tmuxDelimiter);
-        if (parts.length < 4 || parts.first != 'P') {
-          continue;
-        }
-        final sessionName = parts[1];
-        final panePath = parts.sublist(3).join(_tmuxDelimiter).trim();
-        if (panePath.isEmpty) {
-          continue;
-        }
-        if (parts[2] == '1' || !panePaths.containsKey(sessionName)) {
-          panePaths[sessionName] = panePath;
-        }
-      } else {
-        sessionLines.add(line);
+      if (line == _tmuxPanePathMarker) {
+        section = _TmuxListSection.panes;
+        continue;
+      }
+      switch (section) {
+        case _TmuxListSection.sessions:
+          sessionLines.add(line);
+          break;
+        case _TmuxListSection.windows:
+          _readTmuxWindowAttention(
+            line: line,
+            attentionBySession: attentionBySession,
+            terminalTitleBySession: terminalTitleBySession,
+            windowFlagsBySession: windowFlagsBySession,
+          );
+          break;
+        case _TmuxListSection.panes:
+          _readTmuxPaneMetadata(
+            line: line,
+            panePaths: panePaths,
+            paneTitles: paneTitles,
+            attentionBySession: attentionBySession,
+            terminalTitleBySession: terminalTitleBySession,
+          );
+          break;
       }
     }
 
@@ -495,6 +515,7 @@ class LiveSshSession {
         continue;
       }
       final name = parts[1];
+      final terminalTitle = terminalTitleBySession[name];
       sessions.add(
         RemoteTmuxSession(
           name: name,
@@ -503,6 +524,12 @@ class LiveSshSession {
           createdAt: _unixSecondsStringToDate(parts[4]),
           lastActivityAt: _unixSecondsStringToDate(parts[5]),
           currentPath: panePaths[name],
+          attentionState:
+              attentionBySession[name] ?? TerminalAttentionState.none,
+          terminalTitle: terminalTitle?.trim().isNotEmpty == true
+              ? terminalTitle!.trim()
+              : paneTitles[name],
+          windowFlags: windowFlagsBySession[name],
         ),
       );
     }
@@ -520,6 +547,69 @@ class LiveSshSession {
         : List<RemoteTmuxSession>.from(sessions);
     tmuxSessions = nextSessions;
     return nextSessions;
+  }
+
+  void _readTmuxWindowAttention({
+    required String line,
+    required Map<String, TerminalAttentionState> attentionBySession,
+    required Map<String, String> terminalTitleBySession,
+    required Map<String, String> windowFlagsBySession,
+  }) {
+    final parts = line.split(_tmuxDelimiter);
+    if (parts.length < 7 || parts.first != 'W') {
+      return;
+    }
+    final sessionName = parts[1];
+    final windowFlags = parts[2];
+    final windowActivityFlag = parts[3];
+    final windowBellFlag = parts[4];
+    final windowName = parts.sublist(6).join(_tmuxDelimiter).trim();
+    if (windowName.isNotEmpty) {
+      terminalTitleBySession.putIfAbsent(sessionName, () => windowName);
+    }
+    if (windowFlags.trim().isNotEmpty) {
+      windowFlagsBySession[sessionName] = windowFlags;
+    }
+    final state = terminalAttentionFromTmux(
+      windowName: windowName,
+      windowFlags: windowFlags,
+      windowActivityFlag: windowActivityFlag,
+      windowBellFlag: windowBellFlag,
+    );
+    attentionBySession[sessionName] = maxTerminalAttentionState(
+      attentionBySession[sessionName] ?? TerminalAttentionState.none,
+      state,
+    );
+  }
+
+  void _readTmuxPaneMetadata({
+    required String line,
+    required Map<String, String> panePaths,
+    required Map<String, String> paneTitles,
+    required Map<String, TerminalAttentionState> attentionBySession,
+    required Map<String, String> terminalTitleBySession,
+  }) {
+    final parts = line.split(_tmuxDelimiter);
+    if (parts.length < 5 || parts.first != 'P') {
+      return;
+    }
+    final sessionName = parts[1];
+    final panePath = parts[3].trim();
+    final paneTitle = parts.sublist(4).join(_tmuxDelimiter).trim();
+    if (panePath.isNotEmpty &&
+        (parts[2] == '1' || !panePaths.containsKey(sessionName))) {
+      panePaths[sessionName] = panePath;
+    }
+    if (paneTitle.isNotEmpty &&
+        (parts[2] == '1' || !paneTitles.containsKey(sessionName))) {
+      paneTitles[sessionName] = paneTitle;
+      terminalTitleBySession[sessionName] = paneTitle;
+    }
+    final state = terminalAttentionFromTmux(terminalTitle: paneTitle);
+    attentionBySession[sessionName] = maxTerminalAttentionState(
+      attentionBySession[sessionName] ?? TerminalAttentionState.none,
+      state,
+    );
   }
 
   void selectTmuxSession(RemoteTmuxSession? session) {

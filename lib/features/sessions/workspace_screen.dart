@@ -946,11 +946,22 @@ class _SessionNumberBar extends StatefulWidget {
 
 class _SessionNumberBarState extends State<_SessionNumberBar> {
   String? activeServerKey;
+  Timer? refreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshTmuxList());
+    refreshTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refreshTmuxList(),
+    );
+  }
+
+  @override
+  void dispose() {
+    refreshTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -984,7 +995,11 @@ class _SessionNumberBarState extends State<_SessionNumberBar> {
           return _SessionNumberButton(
             label: '${index + 1}',
             selected: session.name == active.selectedTmuxSessionName,
-            onPressed: () => widget.state.selectTmuxSession(session),
+            attentionState: session.attentionState,
+            onPressed: () async {
+              widget.state.acknowledgeCompletedTmuxSession(session);
+              await widget.state.selectTmuxSession(session);
+            },
           );
         },
       ),
@@ -1023,6 +1038,7 @@ class _SessionNumberBarState extends State<_SessionNumberBar> {
           createdAt: null,
           lastActivityAt: null,
           currentPath: active.currentPath,
+          attentionState: TerminalAttentionState.none,
         ),
       );
     }
@@ -1034,24 +1050,51 @@ class _SessionNumberButton extends StatefulWidget {
   const _SessionNumberButton({
     required this.label,
     required this.selected,
+    required this.attentionState,
     required this.onPressed,
   });
 
   final String label;
   final bool selected;
+  final TerminalAttentionState attentionState;
   final VoidCallback onPressed;
 
   @override
   State<_SessionNumberButton> createState() => _SessionNumberButtonState();
 }
 
-class _SessionNumberButtonState extends State<_SessionNumberButton> {
+class _SessionNumberButtonState extends State<_SessionNumberButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController attentionController;
   bool pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    attentionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 720),
+    );
+    _syncAttentionAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SessionNumberButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.attentionState != widget.attentionState) {
+      _syncAttentionAnimation();
+    }
+  }
+
+  @override
+  void dispose() {
+    attentionController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final activePress = pressed && !widget.selected;
-    final foreground = widget.selected ? Colors.white : _warpInk;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onPressed,
@@ -1062,32 +1105,101 @@ class _SessionNumberButtonState extends State<_SessionNumberButton> {
         scale: activePress ? 0.96 : 1,
         duration: const Duration(milliseconds: 70),
         curve: Curves.easeOut,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 70),
-          curve: Curves.easeOut,
-          width: 32,
-          height: 30,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: widget.selected ? _warpInk : const Color(0xBFFFFFFF),
-            border: Border.all(
-              color: widget.selected ? const Color(0x330F172A) : _glassStroke,
-            ),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Text(
-            widget.label,
-            maxLines: 1,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              height: 1,
-            ),
-          ),
+        child: AnimatedBuilder(
+          animation: attentionController,
+          builder: (context, child) {
+            final style = _attentionStyle();
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOut,
+              width: 32,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: style.fill,
+                border: Border.all(color: style.border),
+                borderRadius: BorderRadius.circular(7),
+                boxShadow: style.shadow == null
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: style.shadow!,
+                          blurRadius: 8,
+                          spreadRadius: 0.5,
+                        ),
+                      ],
+              ),
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: style.foreground,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
+  }
+
+  _SessionNumberAttentionStyle _attentionStyle() {
+    if (widget.attentionState == TerminalAttentionState.completed) {
+      return const _SessionNumberAttentionStyle(
+        fill: Color(0xFF2563EB),
+        border: Color(0xFF1D4ED8),
+        foreground: Colors.white,
+        shadow: Color(0x552563EB),
+      );
+    }
+
+    if (widget.attentionState == TerminalAttentionState.actionRequired) {
+      return const _SessionNumberAttentionStyle(
+        fill: Color(0xFFF59E0B),
+        border: Color(0xFFD97706),
+        foreground: _warpInk,
+        shadow: Color(0x44F59E0B),
+      );
+    }
+
+    if (widget.attentionState == TerminalAttentionState.running) {
+      final pulse = 0.38 + attentionController.value * 0.46;
+      final fill = Color.lerp(
+            const Color(0xBFFFFFFF),
+            const Color(0xFFF59E0B),
+            pulse,
+          ) ??
+          const Color(0xFFF59E0B);
+      return _SessionNumberAttentionStyle(
+        fill: fill,
+        border: const Color(0xFFD97706),
+        foreground: _warpInk,
+        shadow: Color.lerp(
+          const Color(0x00F59E0B),
+          const Color(0x66F59E0B),
+          pulse,
+        ),
+      );
+    }
+
+    return _SessionNumberAttentionStyle(
+      fill: widget.selected ? _warpInk : const Color(0xBFFFFFFF),
+      border: widget.selected ? const Color(0x330F172A) : _glassStroke,
+      foreground: widget.selected ? Colors.white : _warpInk,
+    );
+  }
+
+  void _syncAttentionAnimation() {
+    if (widget.attentionState == TerminalAttentionState.running) {
+      attentionController.repeat(reverse: true);
+    } else {
+      attentionController
+        ..stop()
+        ..value = 0;
+    }
   }
 
   void _setPressed(bool value) {
@@ -1096,6 +1208,20 @@ class _SessionNumberButtonState extends State<_SessionNumberButton> {
     }
     setState(() => pressed = value);
   }
+}
+
+class _SessionNumberAttentionStyle {
+  const _SessionNumberAttentionStyle({
+    required this.fill,
+    required this.border,
+    required this.foreground,
+    this.shadow,
+  });
+
+  final Color fill;
+  final Color border;
+  final Color foreground;
+  final Color? shadow;
 }
 
 class _PaneSwitch extends StatelessWidget {
@@ -1792,6 +1918,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   int pollIntervalMs = 120;
   int extraScrollbackLines = 0;
   bool jumpToTopAfterNextPoll = false;
+  bool jumpToBottomAfterNextPoll = false;
   bool historyExhausted = false;
   int? pendingHistoryExpansionLines;
   int? pendingHistoryExpansionPreviousLineCount;
@@ -1888,8 +2015,10 @@ class _TerminalPaneState extends State<TerminalPane> {
     extraScrollbackLines = 0;
     historyExhausted = false;
     pollIntervalMs = _minPollIntervalMs;
+    jumpToBottomAfterNextPoll = true;
     _terminalDiff.reset();
     viewNotifier.value = _TerminalViewData(frame: frame, error: localError);
+    _scrollToBottomSoon();
   }
 
   void _startPolling() {
@@ -1959,11 +2088,17 @@ class _TerminalPaneState extends State<TerminalPane> {
         viewNotifier.value = _TerminalViewData(frame: frame, error: null);
       }
       pollIntervalMs = _nextPollInterval(diff, metadataChanged);
-      if (changed) {
-        if (jumpToTopAfterNextPoll) {
-          jumpToTopAfterNextPoll = false;
+      if (jumpToTopAfterNextPoll) {
+        jumpToTopAfterNextPoll = false;
+        jumpToBottomAfterNextPoll = false;
+        if (changed) {
           _scrollToTopSoon();
-        } else if (shouldFollowOutput) {
+        }
+      } else if (jumpToBottomAfterNextPoll) {
+        jumpToBottomAfterNextPoll = false;
+        _scrollToBottomSoon();
+      } else if (changed) {
+        if (shouldFollowOutput) {
           _scrollToBottomSoon();
         }
       }
@@ -2165,6 +2300,7 @@ class _TerminalPaneState extends State<TerminalPane> {
     });
     pendingHistoryExpansionLines = _currentScrollbackLines;
     jumpToTopAfterNextPoll = true;
+    jumpToBottomAfterNextPoll = false;
     unawaited(_pollOnce());
   }
 
