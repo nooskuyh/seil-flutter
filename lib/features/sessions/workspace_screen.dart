@@ -33,6 +33,7 @@ const _terminalMaxFontSize = 14.0;
 const _terminalForeground = Color(0xFFE5E7EB);
 const _terminalMutedForeground = Color(0xFFA1A1AA);
 const _terminalBottomPaddingLines = '\n\n\n\n';
+const _terminalAutoScrollBottomTolerance = 24.0;
 
 class _WorkspacePerformance extends InheritedWidget {
   const _WorkspacePerformance({
@@ -207,7 +208,7 @@ class _WorkspaceCommandBar extends StatelessWidget {
 
   Future<void> _refreshActiveWorkspace() async {
     await state.pingLiveSessions();
-    await state.reconnectClosedSessions();
+    await state.reconnectClosedSessions(force: true);
     final directory = state.activeDirectory;
     final futures = <Future<void>>[];
     if (directory != null) {
@@ -1014,8 +1015,7 @@ class _SessionNumberBarState extends State<_SessionNumberBar> {
     if (selectedName != null &&
         selectedName.isNotEmpty &&
         !sessions.any((session) => session.name == selectedName)) {
-      sessions.insert(
-        0,
+      sessions.add(
         RemoteTmuxSession(
           name: selectedName,
           windows: 1,
@@ -1785,6 +1785,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   final StringBuffer queuedLiteralInput = StringBuffer();
   Timer? pollTimer;
   Timer? literalInputTimer;
+  Timer? reconnectNoticeTimer;
   TmuxCaptureFrame frame = _emptyTerminalFrame;
   bool polling = false;
   bool pollingStopped = false;
@@ -1844,6 +1845,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   void dispose() {
     literalInputTimer?.cancel();
     pollTimer?.cancel();
+    reconnectNoticeTimer?.cancel();
     viewNotifier.dispose();
     scrollController.dispose();
     horizontalScrollController.dispose();
@@ -1876,6 +1878,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   }
 
   void _restoreCachedFrame() {
+    reconnectNoticeTimer?.cancel();
     final session = widget.state.activeSession;
     activeFrameKey =
         session == null ? null : widget.state.terminalFrameKey(session);
@@ -1890,6 +1893,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   }
 
   void _startPolling() {
+    reconnectNoticeTimer?.cancel();
     pollTimer?.cancel();
     pollingStopped = false;
     _pollOnce();
@@ -1948,6 +1952,7 @@ class _TerminalPaneState extends State<TerminalPane> {
           next.paneMode != frame.paneMode ||
           next.currentPath != frame.currentPath;
       final changed = diff.hasChanges || metadataChanged;
+      final shouldFollowOutput = _isScrolledNearBottom();
       frame = next.copyWith(latencyMs: latency);
       localError = null;
       if (changed || viewNotifier.value.error != null) {
@@ -1958,7 +1963,7 @@ class _TerminalPaneState extends State<TerminalPane> {
         if (jumpToTopAfterNextPoll) {
           jumpToTopAfterNextPoll = false;
           _scrollToTopSoon();
-        } else {
+        } else if (shouldFollowOutput) {
           _scrollToBottomSoon();
         }
       }
@@ -1966,16 +1971,18 @@ class _TerminalPaneState extends State<TerminalPane> {
       final closed =
           polledSession?.isClosed == true || _isClosedSshError(error);
       if (mounted) {
-        localError = closed
-            ? context.l10n.reconnecting
-            : _localizedTerminalError(context, error);
+        localError = closed && widget.state.shouldDeferReconnectNotice
+            ? null
+            : closed
+                ? context.l10n.reconnecting
+                : _localizedTerminalError(context, error);
         viewNotifier.value = _TerminalViewData(
           frame: frame,
           error: localError,
         );
       }
       if (closed) {
-        _stopPollingWithClosedMessage();
+        _handleClosedSession();
       } else {
         pollIntervalMs = math.min(_maxPollIntervalMs, pollIntervalMs + 250);
       }
@@ -2091,7 +2098,7 @@ class _TerminalPaneState extends State<TerminalPane> {
       return;
     }
     if (live.isClosed) {
-      _stopPollingWithClosedMessage();
+      _handleClosedSession();
       return;
     }
     await live.sendTmuxLiteral(value);
@@ -2107,7 +2114,7 @@ class _TerminalPaneState extends State<TerminalPane> {
       return;
     }
     if (live.isClosed) {
-      _stopPollingWithClosedMessage();
+      _handleClosedSession();
       return;
     }
     await live.sendTmuxKey(key);
@@ -2122,6 +2129,15 @@ class _TerminalPaneState extends State<TerminalPane> {
       final position = scrollController.position;
       scrollController.jumpTo(position.maxScrollExtent);
     });
+  }
+
+  bool _isScrolledNearBottom() {
+    if (!scrollController.hasClients) {
+      return true;
+    }
+    final position = scrollController.position;
+    final distanceFromBottom = position.maxScrollExtent - position.pixels;
+    return distanceFromBottom <= _terminalAutoScrollBottomTolerance;
   }
 
   void _scrollToTopSoon() {
@@ -2173,14 +2189,34 @@ class _TerminalPaneState extends State<TerminalPane> {
     setState(() => historyExhausted = reachedHistoryStart);
   }
 
-  void _stopPollingWithClosedMessage() {
+  void _handleClosedSession() {
+    final deferNotice = widget.state.shouldDeferReconnectNotice;
+    _stopPollingWithClosedMessage(showMessage: !deferNotice);
+    if (deferNotice) {
+      _scheduleReconnectNotice(widget.state.reconnectNoticeDelay);
+    }
+  }
+
+  void _stopPollingWithClosedMessage({bool showMessage = true}) {
     pollingStopped = true;
     pollTimer?.cancel();
-    if (mounted) {
+    if (mounted && showMessage) {
       localError = context.l10n.reconnecting;
       viewNotifier.value = _TerminalViewData(frame: frame, error: localError);
     }
     unawaited(widget.state.reconnectClosedSessions());
+  }
+
+  void _scheduleReconnectNotice(Duration delay) {
+    reconnectNoticeTimer?.cancel();
+    final frameKey = _currentFrameKey();
+    reconnectNoticeTimer = Timer(delay, () {
+      if (!mounted || !pollingStopped || _currentFrameKey() != frameKey) {
+        return;
+      }
+      localError = context.l10n.reconnecting;
+      viewNotifier.value = _TerminalViewData(frame: frame, error: localError);
+    });
   }
 
   Future<void> _openFullText() async {

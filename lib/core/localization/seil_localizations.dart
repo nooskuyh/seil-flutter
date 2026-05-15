@@ -48,41 +48,6 @@ class SeilLocalizations {
         zh: '设置',
       );
 
-  String get account => _t(
-        en: 'Account',
-        ko: '계정',
-        ja: 'アカウント',
-        zh: '账户',
-      );
-
-  String get changePassword => _t(
-        en: 'Change password',
-        ko: '비밀번호 변경',
-        ja: 'パスワードを変更',
-        zh: '修改密码',
-      );
-
-  String get userManagement => _t(
-        en: 'User management',
-        ko: '사용자 관리',
-        ja: 'ユーザー管理',
-        zh: '用户管理',
-      );
-
-  String get addUser => _t(
-        en: 'Add user',
-        ko: '사용자 추가',
-        ja: 'ユーザーを追加',
-        zh: '添加用户',
-      );
-
-  String get adminOnlyUserManagement => _t(
-        en: 'Only administrators can manage users.',
-        ko: '관리자만 사용자를 관리할 수 있습니다.',
-        ja: 'ユーザー管理は管理者のみ利用できます。',
-        zh: '只有管理员可以管理用户。',
-      );
-
   String get delete => _t(
         en: 'Delete',
         ko: '삭제',
@@ -287,27 +252,6 @@ class SeilLocalizations {
         ko: '새 비밀번호가 일치하지 않습니다.',
         ja: '新しいパスワードが一致しません。',
         zh: '新密码不一致。',
-      );
-
-  String get currentPassword => _t(
-        en: 'Current password',
-        ko: '현재 비밀번호',
-        ja: '現在のパスワード',
-        zh: '当前密码',
-      );
-
-  String get userId => _t(
-        en: 'Username',
-        ko: '아이디',
-        ja: 'ユーザー名',
-        zh: '用户名',
-      );
-
-  String get name => _t(
-        en: 'Name',
-        ko: '이름',
-        ja: '名前',
-        zh: '姓名',
       );
 
   String get password => _t(
@@ -1270,16 +1214,6 @@ String seilLocalizedErrorMessage(String languageCode, Object error) {
       ko: '이미 초기 사용자가 존재합니다.',
       ja: '初期ユーザーはすでに存在します。',
       zh: '初始用户已存在。',
-    );
-  }
-  if (message == SeilErrorCodes.protectedAccount ||
-      message == '보호 계정은 삭제할 수 없습니다.') {
-    return _localizedByCode(
-      languageCode,
-      en: 'Protected accounts cannot be deleted.',
-      ko: '보호 계정은 삭제할 수 없습니다.',
-      ja: '保護されたアカウントは削除できません。',
-      zh: '无法删除受保护账户。',
     );
   }
   if (message == SeilErrorCodes.savedConnectionNotFound ||

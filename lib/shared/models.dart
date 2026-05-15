@@ -1,5 +1,3 @@
-enum UserRole { admin, user }
-
 enum AuthMode { password, privateKey, agent }
 
 enum FilePreviewKind { dir, code, markdown, image, download }
@@ -42,21 +40,17 @@ class SeilUser {
     required this.id,
     required this.username,
     required this.name,
-    required this.role,
     required this.createdAt,
     required this.updatedAt,
     required this.passwordChangedAt,
-    required this.protectedAccount,
   });
 
   final String id;
   final String username;
   final String name;
-  final UserRole role;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime passwordChangedAt;
-  final bool protectedAccount;
 }
 
 class SavedConnection {

@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 
 import '../core/localization/seil_error_codes.dart';
 import '../core/localization/seil_localizations.dart';
+import '../core/platform/session_retention_service.dart';
 import '../core/settings/app_settings_repository.dart';
 import '../features/auth/auth_repository.dart';
 import '../features/connections/connection_repository.dart';
 import '../features/connections/host_key_repository.dart';
 import '../features/sessions/ssh_session_service.dart';
 import 'models.dart';
+import 'reconnect_policy.dart';
 
 class AppState extends ChangeNotifier {
   AppState({
@@ -18,17 +20,20 @@ class AppState extends ChangeNotifier {
     required this.hostKeyRepository,
     required this.settingsRepository,
     required this.sshSessionService,
-  });
+    this.sessionRetentionService = const SessionRetentionService(),
+    ReconnectPolicy? reconnectPolicy,
+  }) : reconnectPolicy = reconnectPolicy ?? ReconnectPolicy();
 
   final AuthRepository authRepository;
   final ConnectionRepository connectionRepository;
   final HostKeyRepository hostKeyRepository;
   final AppSettingsRepository settingsRepository;
   final SshSessionService sshSessionService;
+  final SessionRetentionService sessionRetentionService;
+  final ReconnectPolicy reconnectPolicy;
 
   SeilUser? currentUser;
   List<SavedConnection> connections = [];
-  List<SeilUser> users = [];
   List<TrustedHostKey> trustedHostKeys = [];
   List<LiveSshSession> liveSessions = [];
   final Map<String, RemoteDirectory> sessionDirectories = {};
@@ -57,9 +62,18 @@ class AppState extends ChangeNotifier {
   int errorSerial = 0;
   int _busyDepth = 0;
   Future<void> _sessionStartTail = Future.value();
+  DateTime? _backgroundedAt;
+  DateTime? _lastResumedAt;
+  Timer? _backgroundKeepAliveTimer;
+  Timer? _backgroundRetentionTimer;
+  Timer? _reconnectRetryTimer;
 
   static const _directoryCacheTtl = Duration(seconds: 20);
   static const _reconnectErrorDelay = Duration(seconds: 5);
+  static const backgroundRetentionDuration = Duration(minutes: 10);
+  static const _backgroundKeepAliveInterval = Duration(seconds: 25);
+  static const hotResumeWindow = backgroundRetentionDuration;
+  static const resumeReconnectNoticeGrace = Duration(seconds: 1);
 
   int get activePaneIndex {
     final session = activeSession;
@@ -77,9 +91,83 @@ class AppState extends ChangeNotifier {
     needsBootstrap = !(await authRepository.hasUsers());
     if (!needsBootstrap) {
       connections = await connectionRepository.listConnections();
-      users = await authRepository.listUsers();
       trustedHostKeys = await hostKeyRepository.listTrustedHostKeys();
     }
+  }
+
+  void enterBackground() {
+    _backgroundedAt ??= DateTime.now();
+    _startBackgroundRetention();
+  }
+
+  void resumeFromBackground() {
+    _stopBackgroundRetention();
+    final now = DateTime.now();
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    _lastResumedAt = now;
+    final hotResume = backgroundedAt != null &&
+        now.difference(backgroundedAt) <= hotResumeWindow;
+    unawaited(_verifySessionsAfterResume(hotResume: hotResume));
+  }
+
+  bool get shouldDeferReconnectNotice {
+    final resumedAt = _lastResumedAt;
+    if (resumedAt == null) {
+      return false;
+    }
+    return DateTime.now().difference(resumedAt) < resumeReconnectNoticeGrace;
+  }
+
+  Duration get reconnectNoticeDelay {
+    final resumedAt = _lastResumedAt;
+    if (resumedAt == null) {
+      return Duration.zero;
+    }
+    final elapsed = DateTime.now().difference(resumedAt);
+    final remaining = resumeReconnectNoticeGrace - elapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Future<void> _verifySessionsAfterResume({required bool hotResume}) async {
+    await pingLiveSessions();
+    await reconnectClosedSessions(force: !hotResume);
+  }
+
+  void _startBackgroundRetention() {
+    if (currentUser == null || liveSessions.isEmpty) {
+      return;
+    }
+    unawaited(sessionRetentionService.start(
+      duration: backgroundRetentionDuration,
+      activeSessions: liveSessions.length,
+    ));
+    _backgroundKeepAliveTimer?.cancel();
+    _backgroundKeepAliveTimer = Timer.periodic(
+      _backgroundKeepAliveInterval,
+      (_) => unawaited(pingLiveSessions()),
+    );
+    _backgroundRetentionTimer?.cancel();
+    _backgroundRetentionTimer = Timer(
+      backgroundRetentionDuration,
+      _stopBackgroundRetention,
+    );
+    unawaited(pingLiveSessions());
+  }
+
+  void _stopBackgroundRetention() {
+    _backgroundKeepAliveTimer?.cancel();
+    _backgroundKeepAliveTimer = null;
+    _backgroundRetentionTimer?.cancel();
+    _backgroundRetentionTimer = null;
+    unawaited(sessionRetentionService.stop());
+  }
+
+  @override
+  void dispose() {
+    _stopBackgroundRetention();
+    _reconnectRetryTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> bootstrapAndLogin({
@@ -92,20 +180,6 @@ class AppState extends ChangeNotifier {
           username: username, name: name, password: password);
       needsBootstrap = false;
       connections = await connectionRepository.listConnections();
-      users = await authRepository.listUsers();
-      trustedHostKeys = await hostKeyRepository.listTrustedHostKeys();
-    });
-  }
-
-  Future<void> login(String username, String password) async {
-    await _run(() async {
-      final user = await authRepository.authenticate(username, password);
-      if (user == null) {
-        throw StateError(SeilErrorCodes.invalidUsernameOrPassword);
-      }
-      currentUser = user;
-      connections = await connectionRepository.listConnections();
-      users = await authRepository.listUsers();
       trustedHostKeys = await hostKeyRepository.listTrustedHostKeys();
     });
   }
@@ -118,7 +192,6 @@ class AppState extends ChangeNotifier {
       }
       currentUser = user;
       connections = await connectionRepository.listConnections();
-      users = await authRepository.listUsers();
       trustedHostKeys = await hostKeyRepository.listTrustedHostKeys();
     });
   }
@@ -135,7 +208,6 @@ class AppState extends ChangeNotifier {
         throw StateError(SeilErrorCodes.userNotFound);
       }
       connections = await connectionRepository.listConnections();
-      users = await authRepository.listUsers();
       trustedHostKeys = await hostKeyRepository.listTrustedHostKeys();
     });
   }
@@ -143,6 +215,10 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     await _closeAllSessions();
     _reconnectSecrets.clear();
+    reconnectPolicy.clearAll();
+    _stopBackgroundRetention();
+    _reconnectRetryTimer?.cancel();
+    _reconnectRetryTimer = null;
     activeSession = null;
     activeDirectory = null;
     currentUser = null;
@@ -167,51 +243,6 @@ class AppState extends ChangeNotifier {
         _removeSession(session);
       }
       connections = await connectionRepository.listConnections();
-    });
-  }
-
-  Future<void> refreshUsers() async {
-    users = await authRepository.listUsers();
-    trustedHostKeys = await hostKeyRepository.listTrustedHostKeys();
-    notifyListeners();
-  }
-
-  Future<void> createUser({
-    required String username,
-    required String name,
-    required String password,
-    UserRole role = UserRole.user,
-  }) async {
-    await _run(() async {
-      await authRepository.createUser(
-          username: username, name: name, password: password, role: role);
-      users = await authRepository.listUsers();
-    });
-  }
-
-  Future<void> deleteUser(SeilUser user) async {
-    await _run(() async {
-      await authRepository.deleteUser(user.id);
-      users = await authRepository.listUsers();
-    });
-  }
-
-  Future<void> changePassword({
-    required String currentPassword,
-    required String newPassword,
-  }) async {
-    final user = currentUser;
-    if (user == null) {
-      return;
-    }
-    await _run(() async {
-      await authRepository.changePassword(
-        userId: user.id,
-        currentPassword: currentPassword,
-        newPassword: newPassword,
-      );
-      currentUser = await authRepository.getUserById(user.id);
-      users = await authRepository.listUsers();
     });
   }
 
@@ -400,6 +431,7 @@ class AppState extends ChangeNotifier {
     if (secret != null && secret.isNotEmpty) {
       _reconnectSecrets[connection.fingerprint] = secret;
     }
+    reconnectPolicy.recordSuccess(connection.fingerprint);
     liveSessions.add(session);
     sessionDirectories[terminalFrameKey(session)] = directory;
     _cacheDirectory(session, directory);
@@ -532,6 +564,7 @@ class AppState extends ChangeNotifier {
           reservedNames: _reservedTmuxNamesForClient(session),
           basePath: selectedPath,
         );
+        _appendSelectedTmuxSessionForClient(session);
         final workspaceKey = terminalFrameKey(session);
         sessionPaneIndexes.putIfAbsent(workspaceKey, () => activePaneIndex);
         activeDirectory = sessionDirectories[workspaceKey];
@@ -631,17 +664,56 @@ class AppState extends ChangeNotifier {
           await liveSession.cleanupTemporaryUploads(tmuxSessionName: trimmed);
         }
       }
+      final previousSessions = List<RemoteTmuxSession>.from(
+        session.tmuxSessions,
+      );
+      final selectedNames = {
+        for (final liveSession in liveSessions)
+          if (liveSession.client == session.client)
+            liveSession.id: liveSession.selectedTmuxSessionName,
+      };
       final sessions = await session.killTmuxSession(trimmed);
       _tmuxTags.remove(_tmuxTagKey(session.connection, trimmed));
+      if (sessions.isEmpty) {
+        await _closeSessionsForClient(session);
+        return;
+      }
+      final fallbackSession = _tmuxSessionBeforeDeleted(
+        previousSessions: previousSessions,
+        sessions: sessions,
+        deletedName: trimmed,
+      );
+      var nextSessions = List<RemoteTmuxSession>.from(sessions);
       for (final liveSession in liveSessions) {
         if (liveSession.client == session.client &&
-            liveSession.selectedTmuxSessionName == trimmed) {
-          liveSession.resetTmuxSelection(sessions: sessions);
-        } else if (liveSession.client == session.client) {
-          liveSession.tmuxSessions = List<RemoteTmuxSession>.from(sessions);
+            selectedNames[liveSession.id] != trimmed) {
+          nextSessions = _appendSelectedTmuxSession(nextSessions, liveSession);
+        }
+      }
+      for (final liveSession in liveSessions) {
+        if (liveSession.client != session.client) {
+          continue;
+        }
+        liveSession.tmuxSessions = List<RemoteTmuxSession>.from(nextSessions);
+        if (selectedNames[liveSession.id] == trimmed) {
+          if (fallbackSession == null) {
+            liveSession.resetTmuxSelection(sessions: nextSessions);
+          } else {
+            _selectTmuxSession(liveSession, fallbackSession);
+          }
         }
       }
     });
+    final active = activeSession;
+    if (active?.client == session.client &&
+        active?.selectedTmuxSession != null &&
+        activeDirectory == null) {
+      final selected = active!.selectedTmuxSession!;
+      final path = selected.currentPath?.trim().isNotEmpty == true
+          ? selected.currentPath!.trim()
+          : active.currentPath;
+      await loadDirectory(path, addToHistory: false);
+    }
   }
 
   Future<void> closeSession(LiveSshSession session) async {
@@ -669,27 +741,55 @@ class AppState extends ChangeNotifier {
     session.close(closeClient: !_hasOtherSessionsOnClient(session));
     if (!_hasOtherSessionsForConnection(session.connection)) {
       _reconnectSecrets.remove(session.connection.fingerprint);
+      reconnectPolicy.clear(session.connection.fingerprint);
+    }
+    if (liveSessions.isEmpty) {
+      _stopBackgroundRetention();
     }
 
     if (activeSession?.id == session.id) {
-      activeSession = liveSessions.isNotEmpty ? liveSessions.last : null;
+      final previousIndex = index <= 0 ? 0 : index - 1;
+      activeSession = liveSessions.isEmpty
+          ? null
+          : liveSessions[previousIndex.clamp(0, liveSessions.length - 1)];
       activeDirectory = activeSession == null
           ? null
           : sessionDirectories[terminalFrameKey(activeSession!)];
     }
   }
 
-  Future<void> reconnectClosedSessions() async {
+  Future<void> _closeSessionsForClient(LiveSshSession source) async {
+    final sessions = liveSessions
+        .where((session) => session.client == source.client)
+        .toList();
+    for (final session in sessions) {
+      await session.cleanupTemporaryUploads();
+    }
+    for (final session in sessions) {
+      _removeSession(session);
+    }
+  }
+
+  Future<void> reconnectClosedSessions({bool force = false}) async {
     if (reconnecting || currentUser == null || liveSessions.isEmpty) {
       return;
     }
 
-    final closedSessions =
+    final allClosedSessions =
         liveSessions.where((session) => session.isClosed).toList();
+    final closedSessions = allClosedSessions
+        .where((session) => reconnectPolicy.canAttempt(
+              session.connection.fingerprint,
+              force: force,
+            ))
+        .toList();
     if (closedSessions.isEmpty) {
+      _scheduleReconnectRetry();
       return;
     }
 
+    _reconnectRetryTimer?.cancel();
+    _reconnectRetryTimer = null;
     reconnecting = true;
     errorMessage = null;
     final reconnectStartedAt = DateTime.now();
@@ -703,6 +803,9 @@ class AppState extends ChangeNotifier {
     final newTerminalFrames = <String, TmuxCaptureFrame>{};
     final newDirectoryBackStacks = <String, List<String>>{};
     final oldActiveId = activeSession?.id;
+    final attemptedFingerprints = {
+      for (final session in closedSessions) session.connection.fingerprint,
+    };
 
     try {
       for (final oldSession in closedSessions) {
@@ -770,9 +873,22 @@ class AppState extends ChangeNotifier {
         activeSession = replacements[oldActiveId];
         activeDirectory = sessionDirectories[terminalFrameKey(activeSession!)];
       }
+      for (final fingerprint in attemptedFingerprints) {
+        reconnectPolicy.recordSuccess(fingerprint);
+      }
     } catch (error) {
+      for (final fingerprint in attemptedFingerprints) {
+        reconnectPolicy.recordFailure(
+          fingerprint,
+          error,
+          requiresManualRetry: _isReconnectUserActionRequired(error),
+        );
+      }
+      _scheduleReconnectRetry();
       if (DateTime.now().difference(reconnectStartedAt) >=
-          _reconnectErrorDelay) {
+              _reconnectErrorDelay ||
+          force ||
+          _isReconnectUserActionRequired(error)) {
         _setError(
           seilLocalizedErrorMessage(
             appLanguageCode,
@@ -948,6 +1064,26 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  void _scheduleReconnectRetry() {
+    _reconnectRetryTimer?.cancel();
+    _reconnectRetryTimer = null;
+    if (currentUser == null || liveSessions.isEmpty) {
+      return;
+    }
+    final closedFingerprints = {
+      for (final session in liveSessions)
+        if (session.isClosed) session.connection.fingerprint,
+    };
+    final delay = reconnectPolicy.delayUntilNextAttempt(closedFingerprints);
+    if (delay == null) {
+      return;
+    }
+    _reconnectRetryTimer = Timer(delay, () {
+      _reconnectRetryTimer = null;
+      unawaited(reconnectClosedSessions());
+    });
+  }
+
   String _directoryCacheKey(LiveSshSession session, String path) {
     return '${terminalFrameKey(session)}:$path';
   }
@@ -1034,6 +1170,9 @@ class AppState extends ChangeNotifier {
         ? sourceDirectory!
         : await session.listDirectory(targetPath);
     liveSessions.add(session);
+    if (selectNewTmux && session.tmuxAvailable) {
+      _appendSelectedTmuxSessionForClient(session);
+    }
     sessionDirectories[terminalFrameKey(session)] = directory;
     _cacheDirectory(session, directory);
     sessionPaneIndexes[terminalFrameKey(session)] = initialPaneIndex;
@@ -1045,12 +1184,123 @@ class AppState extends ChangeNotifier {
     LiveSshSession source,
     List<RemoteTmuxSession> sessions,
   ) {
+    var nextSessions = List<RemoteTmuxSession>.from(sessions);
     for (final liveSession in liveSessions) {
       if (liveSession.client == source.client) {
-        liveSession.tmuxSessions = List<RemoteTmuxSession>.from(sessions);
+        nextSessions = _appendSelectedTmuxSession(nextSessions, liveSession);
       }
     }
-    source.tmuxSessions = List<RemoteTmuxSession>.from(sessions);
+    nextSessions = _appendSelectedTmuxSession(nextSessions, source);
+    for (final liveSession in liveSessions) {
+      if (liveSession.client == source.client) {
+        liveSession.tmuxSessions = List<RemoteTmuxSession>.from(nextSessions);
+      }
+    }
+    source.tmuxSessions = List<RemoteTmuxSession>.from(nextSessions);
+  }
+
+  void _appendSelectedTmuxSessionForClient(LiveSshSession source) {
+    final entry = _selectedTmuxSessionEntry(source);
+    if (entry == null) {
+      return;
+    }
+    for (final liveSession in liveSessions) {
+      if (liveSession.client == source.client) {
+        liveSession.tmuxSessions = _appendTmuxSession(
+          liveSession.tmuxSessions,
+          entry,
+        );
+      }
+    }
+    source.tmuxSessions = _appendTmuxSession(source.tmuxSessions, entry);
+  }
+
+  RemoteTmuxSession? _tmuxSessionBeforeDeleted({
+    required List<RemoteTmuxSession> previousSessions,
+    required List<RemoteTmuxSession> sessions,
+    required String deletedName,
+  }) {
+    if (sessions.isEmpty) {
+      return null;
+    }
+    final deletedIndex = previousSessions.indexWhere(
+      (session) => session.name == deletedName,
+    );
+    final sessionsByName = {
+      for (final session in sessions) session.name: session,
+    };
+    if (deletedIndex > 0) {
+      for (var index = deletedIndex - 1; index >= 0; index -= 1) {
+        final fallback = sessionsByName[previousSessions[index].name];
+        if (fallback != null) {
+          return fallback;
+        }
+      }
+    }
+    if (deletedIndex >= 0) {
+      for (var index = deletedIndex + 1;
+          index < previousSessions.length;
+          index += 1) {
+        final fallback = sessionsByName[previousSessions[index].name];
+        if (fallback != null) {
+          return fallback;
+        }
+      }
+    }
+    return sessions.first;
+  }
+
+  void _selectTmuxSession(
+    LiveSshSession session,
+    RemoteTmuxSession tmuxSession,
+  ) {
+    final previousPaneIndex = sessionPaneIndexes[terminalFrameKey(session)] ??
+        (activeSession?.id == session.id ? activePaneIndex : 0);
+    session.selectTmuxSession(tmuxSession);
+    if (tmuxSession.currentPath?.trim().isNotEmpty == true) {
+      session.currentPath = tmuxSession.currentPath!.trim();
+    }
+    final workspaceKey = terminalFrameKey(session);
+    sessionPaneIndexes.putIfAbsent(workspaceKey, () => previousPaneIndex);
+    if (activeSession?.id == session.id) {
+      activeDirectory = sessionDirectories[workspaceKey];
+    }
+  }
+
+  List<RemoteTmuxSession> _appendSelectedTmuxSession(
+    List<RemoteTmuxSession> sessions,
+    LiveSshSession source,
+  ) {
+    final entry = _selectedTmuxSessionEntry(source);
+    if (entry == null) {
+      return List<RemoteTmuxSession>.from(sessions);
+    }
+    return _appendTmuxSession(sessions, entry);
+  }
+
+  RemoteTmuxSession? _selectedTmuxSessionEntry(LiveSshSession source) {
+    final selectedName = source.selectedTmuxSessionName?.trim();
+    if (selectedName == null || selectedName.isEmpty) {
+      return null;
+    }
+    return RemoteTmuxSession(
+      name: selectedName,
+      windows: 1,
+      attachedClients: 0,
+      createdAt: null,
+      lastActivityAt: null,
+      currentPath: source.currentPath,
+    );
+  }
+
+  List<RemoteTmuxSession> _appendTmuxSession(
+    List<RemoteTmuxSession> sessions,
+    RemoteTmuxSession entry,
+  ) {
+    if (sessions.any((session) => session.name == entry.name)) {
+      return List<RemoteTmuxSession>.from(sessions);
+    }
+    return [...sessions, entry];
   }
 
   bool _tmuxSessionListsEqual(
@@ -1149,6 +1399,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _closeAllSessions() async {
+    _stopBackgroundRetention();
+    _reconnectRetryTimer?.cancel();
+    _reconnectRetryTimer = null;
     final sessions = List<LiveSshSession>.from(liveSessions);
     liveSessions.clear();
     sessionDirectories.clear();
@@ -1158,6 +1411,7 @@ class AppState extends ChangeNotifier {
     _terminalFrames.clear();
     _directoryCache.clear();
     _reconnectSecrets.clear();
+    reconnectPolicy.clearAll();
     final closedClients = <Object>[];
     for (final session in sessions) {
       await session.cleanupTemporaryUploads();
@@ -1222,4 +1476,13 @@ class _CachedDirectory {
 
   final RemoteDirectory directory;
   final DateTime fetchedAt;
+}
+
+bool _isReconnectUserActionRequired(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains(SeilErrorCodes.missingSshSecret.toLowerCase()) ||
+      message.contains('auth fail') ||
+      message.contains('authentication failed') ||
+      message.contains('permission denied') ||
+      message.contains('publickey');
 }

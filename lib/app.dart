@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -73,6 +71,7 @@ class _SeilMobileAppState extends State<SeilMobileApp>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (ready) {
+      state.dispose();
       database.close();
     }
     super.dispose();
@@ -84,8 +83,10 @@ class _SeilMobileAppState extends State<SeilMobileApp>
       return;
     }
     if (lifecycleState == AppLifecycleState.resumed) {
-      unawaited(state.pingLiveSessions());
-      unawaited(state.reconnectClosedSessions());
+      state.resumeFromBackground();
+    } else if (lifecycleState == AppLifecycleState.hidden ||
+        lifecycleState == AppLifecycleState.paused) {
+      state.enterBackground();
     }
   }
 

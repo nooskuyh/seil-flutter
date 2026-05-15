@@ -5,7 +5,6 @@ abstract final class SeilErrorCodes {
   static const userNotFound = 'seil.error.userNotFound';
   static const noLoggedInUser = 'seil.error.noLoggedInUser';
   static const initialUserExists = 'seil.error.initialUserExists';
-  static const protectedAccount = 'seil.error.protectedAccount';
   static const savedConnectionNotFound = 'seil.error.savedConnectionNotFound';
   static const connectionFieldsRequired = 'seil.error.connectionFieldsRequired';
   static const tmuxHistoryLimitInvalid = 'seil.error.tmuxHistoryLimitInvalid';

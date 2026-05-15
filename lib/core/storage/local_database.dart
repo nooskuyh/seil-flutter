@@ -142,12 +142,4 @@ AuthMode authModeFromDb(String value) {
   };
 }
 
-String roleToDb(UserRole role) {
-  return role == UserRole.admin ? 'admin' : 'user';
-}
-
-UserRole roleFromDb(String value) {
-  return value == 'admin' ? UserRole.admin : UserRole.user;
-}
-
 DateTime parseIso(String value) => DateTime.parse(value);

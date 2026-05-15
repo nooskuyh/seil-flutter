@@ -409,7 +409,10 @@ class LiveSshSession {
     await runCommand(
       'tmux kill-session -t ${_quoteShellToken('=$name')} 2>/dev/null || true',
     );
-    final sessions = await listTmuxSessions();
+    final sessions = await listTmuxSessions(
+      preserveCachedOnEmpty: false,
+      includeSelectedFallback: false,
+    );
     if (selectedTmuxSessionName == name) {
       resetTmuxSelection(sessions: sessions);
     }
@@ -444,7 +447,10 @@ class LiveSshSession {
     }
   }
 
-  Future<List<RemoteTmuxSession>> listTmuxSessions() async {
+  Future<List<RemoteTmuxSession>> listTmuxSessions({
+    bool preserveCachedOnEmpty = true,
+    bool includeSelectedFallback = true,
+  }) async {
     if (!tmuxAvailable) {
       return const [];
     }
@@ -500,30 +506,20 @@ class LiveSshSession {
         ),
       );
     }
-    final selectedName = selectedTmuxSessionName;
-    if (selectedName != null &&
-        selectedName.isNotEmpty &&
-        !sessions.any((session) => session.name == selectedName)) {
-      sessions.add(
-        RemoteTmuxSession(
-          name: selectedName,
-          windows: 1,
-          attachedClients: 0,
-          createdAt: DateTime.now().toUtc(),
-          lastActivityAt: DateTime.now().toUtc(),
-          currentPath: currentPath,
-        ),
-      );
+    if (preserveCachedOnEmpty &&
+        sessions.isEmpty &&
+        tmuxSessions.isNotEmpty &&
+        selectedTmuxSessionName?.trim().isNotEmpty == true) {
+      final cached = _withSelectedTmuxSession(tmuxSessions);
+      tmuxSessions = cached;
+      return cached;
     }
-    sessions.sort((left, right) {
-      final leftActivity =
-          left.lastActivityAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final rightActivity =
-          right.lastActivityAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return rightActivity.compareTo(leftActivity);
-    });
-    tmuxSessions = sessions;
-    return sessions;
+    _sortTmuxSessions(sessions);
+    final nextSessions = includeSelectedFallback
+        ? _withSelectedTmuxSession(sessions)
+        : List<RemoteTmuxSession>.from(sessions);
+    tmuxSessions = nextSessions;
+    return nextSessions;
   }
 
   void selectTmuxSession(RemoteTmuxSession? session) {
@@ -549,6 +545,47 @@ class LiveSshSession {
     activeTmuxPaneId = null;
     _tmuxPrepared = false;
     tmuxSelectionReady = true;
+    tmuxSessions = _withSelectedTmuxSession(tmuxSessions);
+  }
+
+  List<RemoteTmuxSession> _withSelectedTmuxSession(
+    List<RemoteTmuxSession> sessions,
+  ) {
+    final selectedName = selectedTmuxSessionName?.trim();
+    if (selectedName == null ||
+        selectedName.isEmpty ||
+        sessions.any((session) => session.name == selectedName)) {
+      return List<RemoteTmuxSession>.from(sessions);
+    }
+    return [
+      ...sessions,
+      RemoteTmuxSession(
+        name: selectedName,
+        windows: 1,
+        attachedClients: 0,
+        createdAt: null,
+        lastActivityAt: null,
+        currentPath: currentPath,
+      ),
+    ];
+  }
+
+  void _sortTmuxSessions(List<RemoteTmuxSession> sessions) {
+    sessions.sort((left, right) {
+      final leftCreated = left.createdAt;
+      final rightCreated = right.createdAt;
+      if (leftCreated != null && rightCreated != null) {
+        final createdOrder = leftCreated.compareTo(rightCreated);
+        if (createdOrder != 0) {
+          return createdOrder;
+        }
+      } else if (leftCreated != null) {
+        return -1;
+      } else if (rightCreated != null) {
+        return 1;
+      }
+      return left.name.compareTo(right.name);
+    });
   }
 
   String _nextTmuxSessionName({

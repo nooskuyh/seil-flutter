@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../core/localization/seil_localizations.dart';
 import '../../core/settings/app_settings_repository.dart';
 import '../../shared/app_state.dart';
-import '../../shared/models.dart';
 
 class AdminSettingsScreen extends StatelessWidget {
   const AdminSettingsScreen({super.key, required this.state});
@@ -20,7 +19,6 @@ class AdminSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildScaffold(BuildContext context) {
-    final isAdmin = state.currentUser?.role == UserRole.admin;
     final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settings)),
@@ -28,58 +26,6 @@ class AdminSettingsScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(l10n.account, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.person),
-                title: Text(state.currentUser?.name ?? '-'),
-                subtitle: Text(state.currentUser?.username ?? '-'),
-                trailing: IconButton(
-                  onPressed: () => _showChangePassword(context),
-                  icon: const Icon(Icons.password),
-                  tooltip: l10n.changePassword,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                    child: Text(l10n.userManagement,
-                        style: Theme.of(context).textTheme.titleLarge)),
-                if (isAdmin)
-                  IconButton(
-                    onPressed: () => _showCreateUser(context),
-                    icon: const Icon(Icons.person_add),
-                    tooltip: l10n.addUser,
-                  ),
-              ],
-            ),
-            if (!isAdmin)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(l10n.adminOnlyUserManagement),
-              )
-            else
-              for (final user in state.users)
-                Card(
-                  child: ListTile(
-                    leading: Icon(user.role == UserRole.admin
-                        ? Icons.admin_panel_settings
-                        : Icons.person),
-                    title: Text(user.name),
-                    subtitle: Text('${user.username} · ${user.role.name}'),
-                    trailing: user.protectedAccount
-                        ? const Icon(Icons.lock)
-                        : IconButton(
-                            onPressed: () => state.deleteUser(user),
-                            icon: const Icon(Icons.delete),
-                            tooltip: l10n.delete,
-                          ),
-                  ),
-                ),
-            const SizedBox(height: 20),
             Text(l10n.security, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Card(
@@ -95,7 +41,7 @@ class AdminSettingsScreen extends StatelessWidget {
                 title: Text(l10n.appLoginPassword),
                 subtitle: Text(l10n.appLoginPasswordDescription),
                 value: state.loginPasswordEnabled,
-                onChanged: isAdmin && !state.busy
+                onChanged: !state.busy
                     ? (value) {
                         if (value) {
                           _showEnableLoginPassword(context);
@@ -159,20 +105,6 @@ class AdminSettingsScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _showCreateUser(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => _CreateUserDialog(state: state),
-    );
-  }
-
-  Future<void> _showChangePassword(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => _ChangePasswordDialog(state: state),
     );
   }
 
@@ -404,167 +336,5 @@ class _EnableLoginPasswordDialogState
     if (mounted && widget.state.errorMessage == null) {
       Navigator.pop(context);
     }
-  }
-}
-
-class _CreateUserDialog extends StatefulWidget {
-  const _CreateUserDialog({required this.state});
-
-  final AppState state;
-
-  @override
-  State<_CreateUserDialog> createState() => _CreateUserDialogState();
-}
-
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog({required this.state});
-
-  final AppState state;
-
-  @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
-}
-
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final currentPassword = TextEditingController();
-  final nextPassword = TextEditingController();
-  final confirmPassword = TextEditingController();
-  String? localError;
-
-  @override
-  void dispose() {
-    currentPassword.dispose();
-    nextPassword.dispose();
-    confirmPassword.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return AlertDialog(
-      title: Text(l10n.changePassword),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentPassword,
-              decoration: InputDecoration(labelText: l10n.currentPassword),
-              obscureText: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: nextPassword,
-              decoration: InputDecoration(labelText: l10n.newPassword),
-              obscureText: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: confirmPassword,
-              decoration: InputDecoration(labelText: l10n.confirmNewPassword),
-              obscureText: true,
-            ),
-            if (localError != null) ...[
-              const SizedBox(height: 12),
-              Text(localError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: Text(l10n.cancel)),
-        FilledButton(
-          onPressed: widget.state.busy ? null : _submit,
-          child: Text(l10n.change),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _submit() async {
-    if (nextPassword.text != confirmPassword.text) {
-      setState(() => localError = context.l10n.passwordsDoNotMatch);
-      return;
-    }
-    setState(() => localError = null);
-    await widget.state.changePassword(
-      currentPassword: currentPassword.text,
-      newPassword: nextPassword.text,
-    );
-    if (mounted && widget.state.errorMessage == null) {
-      Navigator.pop(context);
-    }
-  }
-}
-
-class _CreateUserDialogState extends State<_CreateUserDialog> {
-  final username = TextEditingController();
-  final name = TextEditingController();
-  final password = TextEditingController();
-  UserRole role = UserRole.user;
-
-  @override
-  void dispose() {
-    username.dispose();
-    name.dispose();
-    password.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return AlertDialog(
-      title: Text(l10n.addUser),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: username,
-                decoration: InputDecoration(labelText: l10n.userId)),
-            const SizedBox(height: 12),
-            TextField(
-                controller: name,
-                decoration: InputDecoration(labelText: l10n.name)),
-            const SizedBox(height: 12),
-            TextField(
-                controller: password,
-                decoration: InputDecoration(labelText: l10n.password),
-                obscureText: true),
-            const SizedBox(height: 12),
-            SegmentedButton<UserRole>(
-              segments: const [
-                ButtonSegment(value: UserRole.user, label: Text('User')),
-                ButtonSegment(value: UserRole.admin, label: Text('Admin')),
-              ],
-              selected: {role},
-              onSelectionChanged: (value) => setState(() => role = value.first),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: Text(l10n.cancel)),
-        FilledButton(
-          onPressed: () async {
-            await widget.state.createUser(
-              username: username.text,
-              name: name.text,
-              password: password.text,
-              role: role,
-            );
-            if (context.mounted) {
-              Navigator.pop(context);
-            }
-          },
-          child: Text(l10n.add),
-        ),
-      ],
-    );
   }
 }
