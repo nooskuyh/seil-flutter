@@ -263,7 +263,7 @@ async function readResponseJson(response) {
 
 class GooglePlayError extends Error {
   constructor(message, status, payload) {
-    super(message);
+    super(message, { cause: JSON.stringify(payload) });
     this.name = 'GooglePlayError';
     this.status = status;
     this.payload = payload;
