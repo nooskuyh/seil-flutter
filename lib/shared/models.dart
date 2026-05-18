@@ -11,32 +11,106 @@ TerminalAttentionState terminalAttentionFromTmux({
   String? terminalTitle,
   String? windowName,
   String? terminalScreen,
+  String? paneCurrentCommand,
   String? windowFlags,
   String? windowActivityFlag,
+  String? windowBellFlag,
+  bool allowTitleRunning = true,
+}) {
+  final eventState = terminalAttentionFromTmuxDirectEvent(
+    terminalTitle: terminalTitle,
+    windowName: windowName,
+    windowFlags: windowFlags,
+    windowBellFlag: windowBellFlag,
+  );
+  if (eventState != TerminalAttentionState.none) {
+    return eventState;
+  }
+  return terminalAttentionFromTmuxCurrentState(
+    terminalTitle: terminalTitle,
+    windowName: windowName,
+    terminalScreen: terminalScreen,
+    paneCurrentCommand: paneCurrentCommand,
+    allowTitleRunning: allowTitleRunning,
+  );
+}
+
+TerminalAttentionState terminalAttentionFromTmuxDirectEvent({
+  String? terminalTitle,
+  String? windowName,
+  String? windowFlags,
   String? windowBellFlag,
 }) {
   final text = [
     terminalTitle,
     windowName,
   ].whereType<String>().join(' ').toLowerCase();
-  final screen = (terminalScreen ?? '').toLowerCase();
-  if (_containsActionRequiredText(text) ||
-      _containsActionRequiredText(screen)) {
+  if (_containsActionRequiredText(text)) {
     return TerminalAttentionState.actionRequired;
-  }
-  if (_containsRunningScreen(screen)) {
-    return TerminalAttentionState.running;
-  }
-  if (_containsCompletedScreen(screen)) {
-    return TerminalAttentionState.completed;
-  }
-  if (_containsRunningTitle(text)) {
-    return TerminalAttentionState.running;
   }
   if (windowBellFlag?.trim() == '1' || (windowFlags?.contains('!') ?? false)) {
     return TerminalAttentionState.completed;
   }
   return TerminalAttentionState.none;
+}
+
+TerminalAttentionState terminalAttentionFromTmuxCurrentState({
+  String? terminalTitle,
+  String? windowName,
+  String? terminalScreen,
+  String? paneCurrentCommand,
+  bool allowTitleRunning = true,
+}) {
+  final text = [
+    terminalTitle,
+    windowName,
+  ].whereType<String>().join(' ').toLowerCase();
+  final screen = (terminalScreen ?? '').toLowerCase();
+  if (_containsRunningScreen(screen)) {
+    return TerminalAttentionState.running;
+  }
+  if (allowTitleRunning && _containsRunningTitle(text)) {
+    return TerminalAttentionState.running;
+  }
+  if (_isForegroundJobRunning(paneCurrentCommand)) {
+    return TerminalAttentionState.running;
+  }
+  return TerminalAttentionState.none;
+}
+
+TerminalAttentionState terminalAttentionFromTerminalOutput(String output) {
+  final notificationText = _terminalNotificationText(output);
+  if (notificationText.isNotEmpty) {
+    return _containsActionRequiredText(notificationText.toLowerCase())
+        ? TerminalAttentionState.actionRequired
+        : TerminalAttentionState.completed;
+  }
+
+  final titleText = _terminalTitleText(output);
+  if (titleText.isNotEmpty) {
+    final normalizedTitle = titleText.toLowerCase();
+    if (_containsActionRequiredText(normalizedTitle)) {
+      return TerminalAttentionState.actionRequired;
+    }
+    if (_containsRunningTitle(normalizedTitle)) {
+      return TerminalAttentionState.running;
+    }
+  }
+
+  final outputWithoutOsc = output.replaceAll(_terminalOscPattern, '');
+  if (outputWithoutOsc.contains('\x07')) {
+    return TerminalAttentionState.completed;
+  }
+  return TerminalAttentionState.none;
+}
+
+bool terminalOutputHasAttentionCue(String output) {
+  if (_terminalNotificationText(output).isNotEmpty ||
+      _terminalTitleText(output).isNotEmpty) {
+    return true;
+  }
+  final outputWithoutOsc = output.replaceAll(_terminalOscPattern, '');
+  return outputWithoutOsc.contains('\x07');
 }
 
 bool _containsActionRequiredText(String text) {
@@ -88,8 +162,94 @@ bool _containsRunningScreen(String text) {
       text.contains('swooping');
 }
 
-bool _containsCompletedScreen(String text) {
-  return RegExp(r'\b(cooked|worked) for \d+s\b').hasMatch(text);
+bool _isForegroundJobRunning(String? paneCurrentCommand) {
+  final command = paneCurrentCommand?.trim().toLowerCase();
+  if (command == null || command.isEmpty) {
+    return false;
+  }
+  final basename = command.split('/').last;
+  if (_idlePaneCommands.contains(basename) ||
+      _interactivePaneCommands.contains(basename)) {
+    return false;
+  }
+  return true;
+}
+
+const _idlePaneCommands = {
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'dash',
+  'ksh',
+  'csh',
+  'tcsh',
+  'login',
+  'tmux',
+};
+
+const _interactivePaneCommands = {
+  'claude',
+  'codex',
+  'node',
+  'python',
+  'python3',
+  'ruby',
+  'irb',
+  'ipython',
+  'ptpython',
+  'php',
+  'psql',
+  'mysql',
+  'sqlite3',
+  'redis-cli',
+  'vi',
+  'vim',
+  'nvim',
+  'nano',
+  'emacs',
+  'less',
+  'more',
+  'man',
+  'top',
+  'htop',
+  'btop',
+  'watch',
+  'ssh',
+  'mosh',
+};
+
+final _terminalOscPattern = RegExp(
+  '\x1b\\]([^;\x07]+);(.*?)(?:\x07|\x1b\\\\)',
+  dotAll: true,
+);
+
+String _terminalTitleText(String output) {
+  final titles = <String>[];
+  for (final match in _terminalOscPattern.allMatches(output)) {
+    final code = match.group(1)?.trim();
+    if (code == '0' || code == '1' || code == '2') {
+      titles.add(match.group(2) ?? '');
+    }
+  }
+  return titles.join(' ');
+}
+
+String _terminalNotificationText(String output) {
+  final notifications = <String>[];
+  for (final match in _terminalOscPattern.allMatches(output)) {
+    final code = match.group(1)?.trim();
+    final body = match.group(2) ?? '';
+    if (code == '9' || code == '99') {
+      notifications.add(body);
+    } else if (code == '777') {
+      notifications.add(body.replaceAll(';', ' '));
+    } else if (code == '1337' && body.toLowerCase().contains('notify')) {
+      notifications.add(
+          body.replaceAll(RegExp(r'notify[=;]?', caseSensitive: false), ''));
+    }
+  }
+  return notifications.join(' ');
 }
 
 TerminalAttentionState maxTerminalAttentionState(
@@ -101,7 +261,7 @@ TerminalAttentionState maxTerminalAttentionState(
       : right;
 }
 
-TerminalAttentionState terminalAttentionFromTransition({
+TerminalAttentionState terminalAttentionFromFallbackTransition({
   required TerminalAttentionState previous,
   required TerminalAttentionState current,
 }) {
@@ -116,6 +276,16 @@ TerminalAttentionState terminalAttentionFromTransition({
     return TerminalAttentionState.completed;
   }
   return TerminalAttentionState.none;
+}
+
+TerminalAttentionState terminalAttentionFromTransition({
+  required TerminalAttentionState previous,
+  required TerminalAttentionState current,
+}) {
+  return terminalAttentionFromFallbackTransition(
+    previous: previous,
+    current: current,
+  );
 }
 
 int _terminalAttentionPriority(TerminalAttentionState state) {
@@ -140,6 +310,7 @@ class RemoteTmuxSession {
     required this.lastActivityAt,
     required this.currentPath,
     this.attentionState = TerminalAttentionState.none,
+    this.attentionPaneId,
     this.terminalTitle,
     this.windowFlags,
   });
@@ -151,6 +322,7 @@ class RemoteTmuxSession {
   final DateTime? lastActivityAt;
   final String? currentPath;
   final TerminalAttentionState attentionState;
+  final String? attentionPaneId;
   final String? terminalTitle;
   final String? windowFlags;
 

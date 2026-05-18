@@ -93,6 +93,7 @@ class LiveSshSession {
   bool _tmuxPrepared = false;
   SftpClient? _sftp;
   _PersistentShell? _persistentShell;
+  _TmuxControlModeObserver? _tmuxObserver;
   final Map<String, Set<String>> _temporaryUploadPathsByTmux = {};
 
   String get displayName => connection.displayName;
@@ -171,6 +172,34 @@ class LiveSshSession {
         return _executeCommand(command);
       }
     });
+  }
+
+  Stream<TmuxAttentionSignal>? startTmuxControlModeObserver() {
+    if (!tmuxAvailable) {
+      return null;
+    }
+    final targetName = selectedTmuxSessionName?.trim().isNotEmpty == true
+        ? selectedTmuxSessionName!.trim()
+        : tmuxSessions.isNotEmpty
+            ? tmuxSessions.first.name
+            : null;
+    if (targetName == null || targetName.isEmpty) {
+      return null;
+    }
+    final observer = _tmuxObserver ??= _TmuxControlModeObserver(client);
+    observer.start(targetName: targetName);
+    return observer.events;
+  }
+
+  Future<String?> tmuxSessionNameForPane(String paneId) async {
+    if (!tmuxAvailable || paneId.trim().isEmpty) {
+      return null;
+    }
+    final output = await runCommand(
+      'tmux display-message -p -t ${_quoteShellToken(paneId.trim())} "#{session_name}" 2>/dev/null || true',
+    );
+    final name = output.trim();
+    return name.isEmpty ? null : name;
   }
 
   Future<String> _executeCommand(String command) async {
@@ -305,6 +334,7 @@ class LiveSshSession {
 
   Future<String> captureTmuxSessionTail(
     String tmuxSessionName, {
+    String? paneId,
     int lines = 5,
   }) async {
     if (!tmuxAvailable) {
@@ -314,7 +344,12 @@ class LiveSshSession {
     if (trimmedName.isEmpty) {
       return '';
     }
-    final target = _quoteShellToken('$trimmedName:');
+    final trimmedPaneId = paneId?.trim();
+    final target = _quoteShellToken(
+      trimmedPaneId == null || trimmedPaneId.isEmpty
+          ? '$trimmedName:'
+          : trimmedPaneId,
+    );
     final lineCount = lines.abs().clamp(1, 20).toInt();
     final output = await runCommand(
       'tmux capture-pane -t $target -p -S -$lineCount 2>/dev/null || true',
@@ -377,6 +412,28 @@ class LiveSshSession {
       'send-keys -t ${_quoteShellToken(_tmuxTargetPane)} ${_quoteShellToken(key)}',
       refreshPane: false,
     );
+  }
+
+  Future<void> sendTmuxNotificationAction({
+    required String tmuxSessionName,
+    required String action,
+  }) async {
+    if (!tmuxAvailable || tmuxSessionName.trim().isEmpty) {
+      return;
+    }
+    final target = _quoteShellToken('${tmuxSessionName.trim()}:');
+    final command = switch (action.trim()) {
+      'one' =>
+        'send-keys -t $target -l ${_quoteShellToken('1')} \\; send-keys -t $target Enter',
+      'two' =>
+        'send-keys -t $target -l ${_quoteShellToken('2')} \\; send-keys -t $target Enter',
+      'escape' => 'send-keys -t $target Escape',
+      _ => null,
+    };
+    if (command == null) {
+      return;
+    }
+    await _runTmuxCommand(command, refreshPane: false);
   }
 
   Future<void> changeTmuxDirectory(String path) async {
@@ -493,17 +550,19 @@ class LiveSshSession {
         'printf "\\n$_tmuxWindowMarker\\n"',
         'tmux list-windows -a -F "W$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{window_flags}$_tmuxDelimiter#{window_activity_flag}$_tmuxDelimiter#{window_bell_flag}$_tmuxDelimiter#{window_activity}$_tmuxDelimiter#{window_name}" 2>/dev/null || true',
         'printf "\\n$_tmuxPanePathMarker\\n"',
-        'tmux list-panes -a -F "P$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{pane_active}$_tmuxDelimiter#{pane_current_path}$_tmuxDelimiter#{pane_title}" 2>/dev/null || true',
+        'tmux list-panes -a -F "P$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{pane_active}$_tmuxDelimiter#{pane_current_path}$_tmuxDelimiter#{pane_current_command}$_tmuxDelimiter#{pane_title}" 2>/dev/null || true',
         'printf "\\n$_tmuxPaneTailMarker\\n"',
         'tmux list-panes -a -F "T$_tmuxDelimiter#{session_name}$_tmuxDelimiter#{pane_active}$_tmuxDelimiter#{pane_id}" 2>/dev/null | while IFS= read -r line; do session_name=\$(printf "%s" "\$line" | cut -d "|" -f 4); pane_active=\$(printf "%s" "\$line" | cut -d "|" -f 7); pane_id=\$(printf "%s" "\$line" | cut -d "|" -f 10); if [ "\$pane_active" = "1" ] && [ -n "\$pane_id" ]; then printf "T$_tmuxDelimiter%s$_tmuxDelimiter%s\\n" "\$session_name" "\$pane_id"; tmux capture-pane -t "\$pane_id" -p -S -30 2>/dev/null | sed "s/^/R$_tmuxDelimiter/"; printf "E$_tmuxDelimiter%s\\n" "\$session_name"; fi; done',
       ].join('; '),
     );
     final panePaths = <String, String>{};
     final paneTitles = <String, String>{};
+    final paneCommands = <String, String>{};
     final attentionBySession = <String, TerminalAttentionState>{};
     final terminalTitleBySession = <String, String>{};
     final windowFlagsBySession = <String, String>{};
     final tailBySession = <String, String>{};
+    final activePaneBySession = <String, String>{};
     final sessionLines = <String>[];
     String? tailSessionName;
     final tailBuffer = StringBuffer();
@@ -538,6 +597,7 @@ class LiveSshSession {
             line: line,
             panePaths: panePaths,
             paneTitles: paneTitles,
+            paneCommands: paneCommands,
             attentionBySession: attentionBySession,
             terminalTitleBySession: terminalTitleBySession,
           );
@@ -546,6 +606,7 @@ class LiveSshSession {
           _readTmuxPaneTail(
             line: line,
             tailBySession: tailBySession,
+            activePaneBySession: activePaneBySession,
             tailSessionName: () => tailSessionName,
             setTailSessionName: (name) => tailSessionName = name,
             tailBuffer: tailBuffer,
@@ -566,7 +627,9 @@ class LiveSshSession {
       final screenAwareState = terminalAttentionFromTmux(
         terminalTitle: terminalTitle,
         terminalScreen: tail,
+        paneCurrentCommand: paneCommands[name],
         windowFlags: windowFlagsBySession[name],
+        allowTitleRunning: false,
       );
       final attentionState = screenAwareState != TerminalAttentionState.none
           ? screenAwareState
@@ -580,6 +643,7 @@ class LiveSshSession {
           lastActivityAt: _unixSecondsStringToDate(parts[5]),
           currentPath: panePaths[name],
           attentionState: attentionState,
+          attentionPaneId: activePaneBySession[name],
           terminalTitle: terminalTitle?.trim().isNotEmpty == true
               ? terminalTitle!.trim()
               : paneTitles[name],
@@ -640,26 +704,37 @@ class LiveSshSession {
     required String line,
     required Map<String, String> panePaths,
     required Map<String, String> paneTitles,
+    required Map<String, String> paneCommands,
     required Map<String, TerminalAttentionState> attentionBySession,
     required Map<String, String> terminalTitleBySession,
   }) {
     final parts = line.split(_tmuxDelimiter);
-    if (parts.length < 5 || parts.first != 'P') {
+    if (parts.length < 6 || parts.first != 'P') {
       return;
     }
     final sessionName = parts[1];
     final panePath = parts[3].trim();
-    final paneTitle = parts.sublist(4).join(_tmuxDelimiter).trim();
+    final paneCurrentCommand = parts[4].trim();
+    final paneTitle = parts.sublist(5).join(_tmuxDelimiter).trim();
+    final isActivePane = parts[2] == '1';
     if (panePath.isNotEmpty &&
-        (parts[2] == '1' || !panePaths.containsKey(sessionName))) {
+        (isActivePane || !panePaths.containsKey(sessionName))) {
       panePaths[sessionName] = panePath;
     }
+    if (paneCurrentCommand.isNotEmpty &&
+        (isActivePane || !paneCommands.containsKey(sessionName))) {
+      paneCommands[sessionName] = paneCurrentCommand;
+    }
     if (paneTitle.isNotEmpty &&
-        (parts[2] == '1' || !paneTitles.containsKey(sessionName))) {
+        (isActivePane || !paneTitles.containsKey(sessionName))) {
       paneTitles[sessionName] = paneTitle;
       terminalTitleBySession[sessionName] = paneTitle;
     }
-    final state = terminalAttentionFromTmux(terminalTitle: paneTitle);
+    final state = terminalAttentionFromTmux(
+      terminalTitle: paneTitle,
+      paneCurrentCommand: paneCurrentCommand,
+      allowTitleRunning: false,
+    );
     attentionBySession[sessionName] = maxTerminalAttentionState(
       attentionBySession[sessionName] ?? TerminalAttentionState.none,
       state,
@@ -669,6 +744,7 @@ class LiveSshSession {
   void _readTmuxPaneTail({
     required String line,
     required Map<String, String> tailBySession,
+    required Map<String, String> activePaneBySession,
     required String? Function() tailSessionName,
     required void Function(String?) setTailSessionName,
     required StringBuffer tailBuffer,
@@ -681,6 +757,9 @@ class LiveSshSession {
       final sessionName = parts[1].trim();
       if (sessionName.isEmpty) {
         return;
+      }
+      if (parts.length >= 3 && parts[2].trim().isNotEmpty) {
+        activePaneBySession[sessionName] = parts[2].trim();
       }
       tailBuffer.clear();
       setTailSessionName(sessionName);
@@ -803,6 +882,7 @@ class LiveSshSession {
     session.selectedTmuxSessionName = null;
     session.activeTmuxPaneId = null;
     session._tmuxPrepared = false;
+    session._tmuxObserver = _tmuxObserver;
     session.tmuxSelectionReady = !tmuxAvailable;
     return session;
   }
@@ -987,10 +1067,22 @@ class LiveSshSession {
       return;
     }
     final sftpClient = await sftp();
-    await sftpClient.remove(trimmed);
+    try {
+      await sftpClient.remove(trimmed);
+    } catch (error) {
+      final message = error.toString().toLowerCase();
+      if (message.contains('no such file')) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   void close({bool closeClient = true}) {
+    if (closeClient) {
+      _tmuxObserver?.dispose();
+      _tmuxObserver = null;
+    }
     unawaited(_disposePersistentShell());
     _sftp?.close();
     _sftp = null;
@@ -1130,6 +1222,16 @@ class TmuxCaptureFrame {
   }
 }
 
+class TmuxAttentionSignal {
+  const TmuxAttentionSignal({
+    required this.state,
+    this.paneId,
+  });
+
+  final TerminalAttentionState state;
+  final String? paneId;
+}
+
 class _SshCommandQueue {
   Future<void> _tail = Future.value();
 
@@ -1148,6 +1250,185 @@ class _SshCommandQueue {
       }
     });
   }
+}
+
+class _TmuxControlModeObserver {
+  _TmuxControlModeObserver(this._client);
+
+  final SSHClient _client;
+  final _controller = StreamController<TmuxAttentionSignal>.broadcast();
+  final StringBuffer _lineBuffer = StringBuffer();
+  SSHSession? _session;
+  StreamSubscription<Uint8List>? _stdoutSubscription;
+  StreamSubscription<Uint8List>? _stderrSubscription;
+  Timer? _restartTimer;
+  String? _targetName;
+  bool _starting = false;
+  bool _closed = false;
+
+  Stream<TmuxAttentionSignal> get events => _controller.stream;
+
+  void start({required String targetName}) {
+    _targetName = targetName;
+    if (_closed || _starting || _session != null || _client.isClosed) {
+      return;
+    }
+    _restartTimer?.cancel();
+    _restartTimer = null;
+    _starting = true;
+    unawaited(_start(targetName));
+  }
+
+  Future<void> _start(String targetName) async {
+    try {
+      final target = _quoteShellToken('=$targetName');
+      final session = await _client.execute(
+        'tmux -C attach-session -t $target 2>/dev/null',
+      );
+      if (_closed) {
+        session.close();
+        return;
+      }
+      _session = session;
+      _stdoutSubscription = session.stdout.listen(
+        _onStdout,
+        onDone: _disposeChannel,
+        onError: (_) => _disposeChannel(),
+      );
+      _stderrSubscription = session.stderr.listen((_) {});
+      unawaited(session.done.whenComplete(_disposeChannel));
+    } catch (_) {
+      _disposeChannel();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> dispose() async {
+    _closed = true;
+    await _stdoutSubscription?.cancel();
+    await _stderrSubscription?.cancel();
+    _restartTimer?.cancel();
+    _restartTimer = null;
+    _stdoutSubscription = null;
+    _stderrSubscription = null;
+    _session?.close();
+    _session = null;
+    _lineBuffer.clear();
+    await _controller.close();
+  }
+
+  void _disposeChannel() {
+    _stdoutSubscription?.cancel();
+    _stderrSubscription?.cancel();
+    _stdoutSubscription = null;
+    _stderrSubscription = null;
+    _session = null;
+    _lineBuffer.clear();
+    if (!_closed && _targetName != null && !_client.isClosed) {
+      _restartTimer?.cancel();
+      _restartTimer = Timer(const Duration(seconds: 2), () {
+        final targetName = _targetName;
+        if (!_closed && targetName != null) {
+          start(targetName: targetName);
+        }
+      });
+    }
+  }
+
+  void _onStdout(Uint8List data) {
+    if (_closed) {
+      return;
+    }
+    final text = utf8.decode(data, allowMalformed: true);
+    _lineBuffer.write(text.replaceAll('\r\n', '\n').replaceAll('\r', '\n'));
+    final buffered = _lineBuffer.toString();
+    final lines = buffered.split('\n');
+    _lineBuffer
+      ..clear()
+      ..write(lines.removeLast());
+    for (final line in lines) {
+      _handleControlLine(line.trimRight());
+    }
+  }
+
+  void _handleControlLine(String line) {
+    if (line.startsWith('%output ')) {
+      _handleOutputLine(line);
+      return;
+    }
+    if (line.startsWith('%window-renamed ') ||
+        line.startsWith('%session-window-changed ') ||
+        line.startsWith('%sessions-changed')) {
+      _emit(const TmuxAttentionSignal(state: TerminalAttentionState.none));
+    }
+  }
+
+  void _handleOutputLine(String line) {
+    final body = line.substring('%output '.length);
+    final separator = body.indexOf(' ');
+    if (separator <= 0 || separator >= body.length - 1) {
+      return;
+    }
+    final paneId = body.substring(0, separator).trim();
+    final payload = _decodeTmuxControlPayload(body.substring(separator + 1));
+    final state = terminalAttentionFromTerminalOutput(payload);
+    if (state == TerminalAttentionState.none &&
+        !terminalOutputHasAttentionCue(payload)) {
+      return;
+    }
+    _emit(TmuxAttentionSignal(state: state, paneId: paneId));
+  }
+
+  void _emit(TmuxAttentionSignal signal) {
+    if (!_closed && !_controller.isClosed) {
+      _controller.add(signal);
+    }
+  }
+}
+
+String _decodeTmuxControlPayload(String payload) {
+  final buffer = StringBuffer();
+  for (var i = 0; i < payload.length; i += 1) {
+    final codeUnit = payload.codeUnitAt(i);
+    if (codeUnit != 0x5c || i == payload.length - 1) {
+      buffer.writeCharCode(codeUnit);
+      continue;
+    }
+    final next = payload.codeUnitAt(i + 1);
+    if (_isOctalDigit(next) &&
+        i + 3 < payload.length &&
+        _isOctalDigit(payload.codeUnitAt(i + 2)) &&
+        _isOctalDigit(payload.codeUnitAt(i + 3))) {
+      final value = int.parse(payload.substring(i + 1, i + 4), radix: 8);
+      buffer.writeCharCode(value);
+      i += 3;
+      continue;
+    }
+    switch (next) {
+      case 0x5c:
+        buffer.write('\\');
+        break;
+      case 0x6e:
+        buffer.write('\n');
+        break;
+      case 0x72:
+        buffer.write('\r');
+        break;
+      case 0x74:
+        buffer.write('\t');
+        break;
+      default:
+        buffer.writeCharCode(next);
+        break;
+    }
+    i += 1;
+  }
+  return buffer.toString();
+}
+
+bool _isOctalDigit(int codeUnit) {
+  return codeUnit >= 0x30 && codeUnit <= 0x37;
 }
 
 class _PersistentShell {

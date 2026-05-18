@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -7,10 +8,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../core/localization/seil_error_codes.dart';
 import '../../core/localization/seil_localizations.dart';
+import '../../core/platform/external_file_opener.dart';
 import '../../shared/app_state.dart';
 import '../../shared/models.dart';
 import 'ssh_session_service.dart';
@@ -3907,6 +3911,27 @@ String _temporaryUploadName(String originalName) {
   return '.seil-${DateTime.now().millisecondsSinceEpoch}-$suffix';
 }
 
+String _temporaryExternalOpenName(String originalName) {
+  final sanitized = originalName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  final safeName = sanitized.trim().isEmpty ? 'seil-file' : sanitized.trim();
+  return '${DateTime.now().microsecondsSinceEpoch}-$safeName';
+}
+
+Future<void> _openRemoteFileExternally({
+  required LiveSshSession session,
+  required RemoteFileEntry entry,
+}) async {
+  final bytes = await session.downloadBytes(entry.path);
+  final directory = await getTemporaryDirectory();
+  final localPath = p.join(
+    directory.path,
+    _temporaryExternalOpenName(entry.name),
+  );
+  final file = File(localPath);
+  await file.writeAsBytes(bytes, flush: true);
+  await const ExternalFileOpener().open(file.path);
+}
+
 bool _isClosedSshError(Object error) {
   final message = error.toString().toLowerCase();
   return message.contains(SeilErrorCodes.reconnecting.toLowerCase()) ||
@@ -3939,6 +3964,9 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
   bool showHidden = false;
   String sortMode = 'name';
   bool uploading = false;
+  bool deleteMode = false;
+  bool deleting = false;
+  final selectedDeletePaths = <String>{};
   Timer? filterDebounce;
 
   @override
@@ -3957,6 +3985,11 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
     final entries = _filteredEntries(directory.entries);
     final dirCount = entries.where((entry) => entry.isDirectory).length;
     final fileCount = entries.length - dirCount;
+    final selectedDeleteEntries = [
+      for (final entry in entries)
+        if (!entry.isDirectory && selectedDeletePaths.contains(entry.path))
+          entry,
+    ];
     return Column(
       children: [
         Padding(
@@ -3967,49 +4000,73 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _ExplorerIconButton(
-                    icon: LucideIcons.chevronLeft,
-                    tooltip: context.l10n.previousFolder,
-                    onPressed: widget.state.canGoBackDirectory
-                        ? widget.state.goBackDirectory
-                        : null,
-                  ),
-                  _ExplorerIconButton(
-                    icon: LucideIcons.chevronUp,
-                    tooltip: context.l10n.parentFolder,
-                    onPressed: directory.parentPath == null
-                        ? null
-                        : () => widget.state.loadDirectory(
-                              directory.parentPath!,
-                            ),
-                  ),
-                  _ExplorerIconButton(
-                    icon: LucideIcons.squareTerminal,
-                    tooltip: context.l10n.startTerminalHere,
-                    onPressed: widget.state.busy
-                        ? null
-                        : () => widget.state.createTerminalSessionFromActive(
-                              path: directory.currentPath,
-                              initialPaneIndex: 0,
-                              selectNewTmux: true,
-                            ),
-                  ),
-                  _ExplorerIconButton(
-                    icon: LucideIcons.upload,
-                    tooltip: context.l10n.upload,
-                    busy: uploading,
-                    onPressed: uploading ? null : () => _uploadFiles(context),
-                  ),
-                  _ExplorerIconButton(
-                    icon: LucideIcons.folderPlus,
-                    tooltip: context.l10n.newFolder,
-                    onPressed: () => _newFolder(context),
-                  ),
-                  _ExplorerIconButton(
-                    icon: LucideIcons.refreshCw,
-                    tooltip: context.l10n.refresh,
-                    onPressed: widget.state.refreshActiveDirectory,
-                  ),
+                  if (deleteMode) ...[
+                    _ExplorerIconButton(
+                      icon: LucideIcons.x,
+                      tooltip: context.l10n.cancel,
+                      onPressed: deleting ? null : _exitDeleteMode,
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.trash2,
+                      tooltip: context.l10n.delete,
+                      busy: deleting,
+                      selected: selectedDeleteEntries.isNotEmpty,
+                      onPressed: deleting || selectedDeleteEntries.isEmpty
+                          ? null
+                          : () => _confirmDelete(selectedDeleteEntries),
+                    ),
+                  ] else ...[
+                    _ExplorerIconButton(
+                      icon: LucideIcons.chevronLeft,
+                      tooltip: context.l10n.previousFolder,
+                      onPressed: widget.state.canGoBackDirectory
+                          ? widget.state.goBackDirectory
+                          : null,
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.chevronUp,
+                      tooltip: context.l10n.parentFolder,
+                      onPressed: directory.parentPath == null
+                          ? null
+                          : () => widget.state.loadDirectory(
+                                directory.parentPath!,
+                              ),
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.squareTerminal,
+                      tooltip: context.l10n.startTerminalHere,
+                      onPressed: widget.state.busy
+                          ? null
+                          : () => widget.state.createTerminalSessionFromActive(
+                                path: directory.currentPath,
+                                initialPaneIndex: 0,
+                                selectNewTmux: true,
+                              ),
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.upload,
+                      tooltip: context.l10n.upload,
+                      busy: uploading,
+                      onPressed: uploading ? null : () => _uploadFiles(context),
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.folderPlus,
+                      tooltip: context.l10n.newFolder,
+                      onPressed: () => _newFolder(context),
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.trash2,
+                      tooltip: context.l10n.delete,
+                      onPressed: fileCount == 0
+                          ? null
+                          : () => setState(() => deleteMode = true),
+                    ),
+                    _ExplorerIconButton(
+                      icon: LucideIcons.refreshCw,
+                      tooltip: context.l10n.refresh,
+                      onPressed: widget.state.refreshActiveDirectory,
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 6),
@@ -4072,6 +4129,16 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                   _ExplorerPill(label: context.l10n.dirsCount(dirCount)),
                   const SizedBox(width: 5),
                   _ExplorerPill(label: context.l10n.filesCount(fileCount)),
+                  if (deleteMode) ...[
+                    const SizedBox(width: 5),
+                    _ExplorerPill(
+                      label: selectedDeleteEntries.isEmpty
+                          ? context.l10n.selectFilesToDelete
+                          : context.l10n.selectedFiles(
+                              selectedDeleteEntries.length,
+                            ),
+                    ),
+                  ],
                   const Spacer(),
                   Text(
                     _sortModeLabel(context, sortMode),
@@ -4111,12 +4178,19 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
                   separatorBuilder: (_, __) => const SizedBox(height: 4),
                   itemBuilder: (context, index) {
                     final entry = entries[index];
+                    final selected = selectedDeletePaths.contains(entry.path);
                     return _ExplorerEntryTile(
                       entry: entry,
-                      onTap: () => entry.isDirectory
-                          ? widget.state.loadDirectory(entry.path)
-                          : _openFile(context, entry),
-                      onRename: () => _rename(context, entry),
+                      selected: selected,
+                      selectionMode: deleteMode,
+                      selectable: !entry.isDirectory,
+                      onTap: deleteMode
+                          ? () => _toggleDeleteSelection(entry)
+                          : () => entry.isDirectory
+                              ? widget.state.loadDirectory(entry.path)
+                              : _openFile(context, entry),
+                      onRename:
+                          deleteMode ? null : () => _rename(context, entry),
                     );
                   },
                 ),
@@ -4212,6 +4286,73 @@ class _FileExplorerPaneState extends State<FileExplorerPane> {
         setState(() => filter = value);
       }
     });
+  }
+
+  void _exitDeleteMode() {
+    setState(() {
+      deleteMode = false;
+      selectedDeletePaths.clear();
+    });
+  }
+
+  void _toggleDeleteSelection(RemoteFileEntry entry) {
+    if (entry.isDirectory || deleting) {
+      return;
+    }
+    setState(() {
+      if (!selectedDeletePaths.add(entry.path)) {
+        selectedDeletePaths.remove(entry.path);
+      }
+    });
+  }
+
+  Future<void> _confirmDelete(
+    List<RemoteFileEntry> entries,
+  ) async {
+    if (entries.isEmpty || deleting) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.l10n.delete),
+        content: Text(context.l10n.deleteFilesMessage(entries.length)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(context.l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(context.l10n.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() => deleting = true);
+    try {
+      await widget.state.deleteFileEntries(entries);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.deletedFiles(entries.length))),
+      );
+      _exitDeleteMode();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.deleteFailed(error))),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => deleting = false);
+      }
+    }
   }
 
   Future<void> _newFolder(BuildContext context) async {
@@ -4523,30 +4664,51 @@ class _ExplorerEntryTile extends StatelessWidget {
     required this.entry,
     required this.onTap,
     required this.onRename,
+    this.selectionMode = false,
+    this.selectable = true,
+    this.selected = false,
   });
 
   final RemoteFileEntry entry;
   final VoidCallback onTap;
-  final VoidCallback onRename;
+  final VoidCallback? onRename;
+  final bool selectionMode;
+  final bool selectable;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xBFFFFFFF),
+      color: selected ? const Color(0xFFE0F2FE) : const Color(0xBFFFFFFF),
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
+        onTap: selectionMode && !selectable ? null : onTap,
         onLongPress: onRename,
         child: Container(
           constraints: const BoxConstraints(minHeight: 46),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xCFFFFFFF)),
+            border: Border.all(
+              color:
+                  selected ? const Color(0xFF38BDF8) : const Color(0xCFFFFFFF),
+            ),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             children: [
+              if (selectionMode) ...[
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: selected,
+                    onChanged: selectable ? (_) => onTap() : null,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
               _FileEntryIcon(entry: entry),
               const SizedBox(width: 8),
               Expanded(
@@ -4600,11 +4762,14 @@ class _ExplorerEntryTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              Icon(
-                entry.isDirectory ? LucideIcons.chevronRight : LucideIcons.eye,
-                size: 14,
-                color: _mutedForeground,
-              ),
+              if (!selectionMode)
+                Icon(
+                  entry.isDirectory
+                      ? LucideIcons.chevronRight
+                      : LucideIcons.eye,
+                  size: 14,
+                  color: _mutedForeground,
+                ),
             ],
           ),
         ),
@@ -4809,6 +4974,8 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
   final editor = TextEditingController();
   bool editing = false;
   bool saving = false;
+  bool openingExternal = false;
+  bool downloading = false;
   RemoteTextFile? textFile;
 
   @override
@@ -4894,11 +5061,12 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(snapshot.error.toString()),
-                ),
+              return _UnavailableFilePreview(
+                message: snapshot.error.toString(),
+                opening: openingExternal,
+                downloading: downloading,
+                onOpen: _openExternally,
+                onDownload: _download,
               );
             }
             final preview = snapshot.data!;
@@ -4915,15 +5083,12 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
               );
             }
             if (preview.unsupportedPreview) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Text(
-                    context.l10n.filePreviewUnsupported,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: _mutedForeground),
-                  ),
-                ),
+              return _UnavailableFilePreview(
+                message: context.l10n.filePreviewUnsupported,
+                opening: openingExternal,
+                downloading: downloading,
+                onOpen: _openExternally,
+                onDownload: _download,
               );
             }
             final file = textFile ?? preview.textFile!;
@@ -4941,6 +5106,61 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openExternally() async {
+    if (openingExternal) {
+      return;
+    }
+    setState(() => openingExternal = true);
+    try {
+      await _openRemoteFileExternally(
+        session: widget.session,
+        entry: widget.entry,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.openFileFailed(error))),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => openingExternal = false);
+      }
+    }
+  }
+
+  Future<void> _download() async {
+    if (downloading) {
+      return;
+    }
+    setState(() => downloading = true);
+    final downloadTitle = context.l10n.download;
+    final downloadedMessage = context.l10n.fileDownloaded;
+    try {
+      final bytes = await widget.session.downloadBytes(widget.entry.path);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: downloadTitle,
+        fileName: widget.entry.name,
+        bytes: bytes,
+      );
+      if (savedPath != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(downloadedMessage)),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.downloadFailed(error))),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => downloading = false);
+      }
+    }
   }
 
   Future<void> _save() async {
@@ -4993,6 +5213,83 @@ class _LoadedPreview {
   final RemoteTextFile? textFile;
   final Uint8List? imageBytes;
   final bool unsupportedPreview;
+}
+
+class _UnavailableFilePreview extends StatelessWidget {
+  const _UnavailableFilePreview({
+    required this.message,
+    required this.opening,
+    required this.downloading,
+    required this.onOpen,
+    required this.onDownload,
+  });
+
+  final String message;
+  final bool opening;
+  final bool downloading;
+  final VoidCallback onOpen;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                LucideIcons.fileQuestionMark,
+                size: 28,
+                color: _mutedForeground,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: _mutedForeground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: opening || downloading ? null : onOpen,
+                    icon: opening
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(LucideIcons.externalLink, size: 16),
+                    label: Text(context.l10n.openNow),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: opening || downloading ? null : onDownload,
+                    icon: downloading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(LucideIcons.download, size: 16),
+                    label: Text(context.l10n.download),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _CodeEditor extends StatelessWidget {
